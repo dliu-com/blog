@@ -1,6 +1,8 @@
 # Dewei Blog
 
-The blog at **https://blog.dliu.com**: a small, serverless blog with a WordPress-style theme and editor.
+The blog at **https://blog.dliu.com**: a small, serverless blog. It looks like the other dliu.com apps and is just a list of posts; writing works like WordPress (drafts, publish, attach pictures and files).
+
+Technical architecture, cost and security are explained at https://blog.dliu.com/docs.
 
 It replaces the old WordPress container, which ran around the clock. The new blog has **no server running when nobody is using it**:
 
@@ -13,7 +15,7 @@ It replaces the old WordPress container, which ran around the clock. The new blo
 flowchart LR
   R[Reader] --> CF[CloudFront<br/>blog.dliu.com]
   A[Author] --> CF
-  CF -->|"/, /posts/*, /admin"| Site[(S3 site bucket<br/>index.html, app.js, css)]
+  CF -->|"/, /yyyymmddNN, /admin, /docs"| Site[(S3 site bucket<br/>index.html, docs.html, js, css)]
   CF -->|"/content/*, /media/*" OAC| Content[(S3 content bucket<br/>published JSON + files)]
   CF -->|"/api/*, /auth/*" OAC| L[Lambda Function URL<br/>authors only]
   L --> DDB[(DynamoDB<br/>posts)]
@@ -25,34 +27,39 @@ flowchart LR
 
 | Piece | Role |
 | --- | --- |
-| CloudFront | Single domain, TLS, security headers, SPA routing and WordPress URL redirects. The redirects are handled by a CloudFront Function (`functions/viewer-request.js`). |
+| CloudFront | Single domain, TLS, security headers, page routing and old-link redirects. The redirects are handled by a CloudFront Function (`functions/viewer-request.js`). |
 | Site bucket | Static frontend from `web/`. |
-| Content bucket (private) | `content/index.json` (list of published posts), `content/posts/<slug>.json` (one file per published post) and `media/<postId>/<fileId>/<name>` (uploaded files). |
+| Content bucket (private) | `content/index.json` (list of published posts), `content/posts/<postId>.json` (one file per published post) and `media/<postId>/<fileId>/<name>` (uploaded files). |
 | Lambda (`lambda/api`) | Authoring API and Microsoft sign-in. Reached only through CloudFront (Function URL with IAM auth + OAC). Reserved concurrency is 10. |
 | DynamoDB | Source of truth for posts, drafts included. On-demand billing, point-in-time recovery, deletion protection. |
 
 Cost at low traffic is a few cents a month for requests and storage, plus the Route 53 zone the other dliu.com apps already share. Nothing is billed per hour.
 
+## Post IDs and URLs
+
+Every post gets an ID of the form `yyyymmddNN`: the UTC date it was created plus a two-digit counter, starting at `00` each day (`2026102700`, `2026102701`, …). The post lives at `https://blog.dliu.com/<postId>`, for example `https://blog.dliu.com/2026102701`. The ID never changes, so editing a title doesn't break links. Up to 100 posts can be created per day.
+
 ## Writing posts
 
-1. Open https://blog.dliu.com/admin (or `/wp-admin`, which redirects there) and sign in with a Microsoft account in the `dliu.com` organisation.
-2. Click **Add New**. Write the title and the body in Markdown. Use the toolbar or **Preview** to check how it looks.
-3. Add pictures and files by dragging them onto the editor, pasting them, or clicking **Add Media**:
-   - Images are inserted into the post where the cursor is.
+1. Click **Sign in** at the top of any page (or open `/admin`) and sign in with a Microsoft account in the `dliu.com` organisation.
+2. Click **＋ New post**. Write the title and the body in Markdown. Use the toolbar or the **Preview** tab to check how it looks.
+3. Add pictures and files by dragging them onto the text, pasting them, clicking **🖼 Picture or file**, or using the **Files** box:
+   - Pictures dropped on the text are inserted where the cursor is.
    - Other files appear under **Attachments** on the post page.
    - Each file can be up to 100 MB, with up to 100 files per post.
-4. Click **Save Draft** (or press Ctrl/⌘+S) to keep the post private, or **Publish** to make it public. **Switch to Draft** unpublishes it. **Move to Trash** deletes the post and its files.
+4. Click **Save draft** (or press Ctrl/⌘+S) to keep the post private, or **Publish** to make it public. On a published post, **Update** saves changes and **Unpublish (back to draft)** hides it again. **Delete post** removes the post and its files.
 
-While you are signed in, an admin bar appears on the public pages with **Dashboard**, **+ New Post** and **Edit Post** links.
+While you are signed in, the header shows **Edit** (on a post page), **Posts** (all posts and drafts), **＋ New post** and **Sign out**.
 
 Images, PDFs, plain text, audio and video open in the browser. Other file types are always downloaded rather than displayed.
 
 ## Repository layout
 
 ```
-web/            frontend (vanilla JS, no build step): index.html, app.js, markdown.js, style.css
+web/            frontend (vanilla JS, no build step): index.html, app.js, markdown.js, style.css,
+                docs.html, docs.js, docs.css, diagram.js (the /docs page)
 lambda/api/     authoring API: routes (index.js), posts, S3 signing, DynamoDB store, Entra auth, config
-functions/      CloudFront viewer-request function (routing + WordPress redirects)
+functions/      CloudFront viewer-request function (routing + old-link redirects)
 lib/, bin/      AWS CDK stack (BlogSite)
 scripts/        dev server with in-memory store, set-secrets.sh
 test/           Jest tests (API, S3 signing, routing, markdown sanitising, stack)
@@ -105,20 +112,20 @@ The DynamoDB table and the content bucket are **retained** when the stack is del
 
 - The frontend files and `content/*.json` are served with `no-cache`, so CloudFront and browsers revalidate them. A published edit appears immediately.
 - Files under `/media/` are cached for a day. A replaced file gets a new ID, so its URL changes too.
-- Publishing, editing or unpublishing a post rewrites `content/posts/<slug>.json`. It also rebuilds `content/index.json` from DynamoDB.
+- Publishing, editing or unpublishing a post rewrites `content/posts/<postId>.json`. It also rebuilds `content/index.json` from DynamoDB.
 
-## Old WordPress URLs
+## Routes and old links
 
-The CloudFront function keeps old links working:
-
-| Old | New |
+| Path | Result |
 | --- | --- |
-| `/<slug>/` | `/posts/<slug>` (301) |
+| `/` | List of posts. `/?s=word` searches titles and excerpts; `/?m=202510` shows one month. |
+| `/<postId>` | The post, e.g. `/2026102701` |
+| `/admin` | All posts and drafts (signed in) |
+| `/docs` | Architecture, cost and security |
+| `/posts/<postId>` | `/<postId>` (301) |
 | `/2025/04/` | `/?m=202504` (301) |
-| `/page/2/` | `/?paged=2` (301) |
+| `/<old-wordpress-slug>/`, `/page/2/` | `/` (301) |
 | `/wp-admin`, `/wp-login.php` | `/admin` (302) |
-
-Search (`/?s=`), month archives (`/?m=`) and paging (`/?paged=`) use the same query parameters as WordPress.
 
 ## Security
 

@@ -25,7 +25,7 @@ const ROOT = path.join(__dirname, '..');
 
 export const PARAMETER_PREFIX = '/blog';
 
-// SPA rewrites and old WordPress URLs (/<slug>/, /wp-admin, /YYYY/MM/, /page/N/). Shared with the dev server.
+// SPA rewrites (/<postId>, /admin…, /docs) and old WordPress URLs (/<slug>/, /wp-admin, /YYYY/MM/, /page/N/). Shared with the dev server.
 export const VIEWER_REQUEST_CODE = fs.readFileSync(path.join(ROOT, 'functions/viewer-request.js'), 'utf8');
 
 export interface BlogStackProps extends StackProps {
@@ -57,11 +57,6 @@ export class BlogStack extends Stack {
     // ---------- Data ----------
     const table = new dynamodb.TableV2(this, 'Posts', {
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-      globalSecondaryIndexes: [{
-        indexName: 'bySlug',
-        partitionKey: { name: 'slug', type: dynamodb.AttributeType.STRING },
-        projectionType: dynamodb.ProjectionType.KEYS_ONLY,
-      }],
       billing: dynamodb.Billing.onDemand(),
       pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       deletionProtection: true,

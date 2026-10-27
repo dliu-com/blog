@@ -2,17 +2,20 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Dewei Blog</title>
-  <meta name="description" content="Dewei Blog: posts, trips and photos.">
-  <meta property="og:site_name" content="Dewei Blog">
-  <link rel="icon" type="image/png" href="https://files.dliu.com/dliu.com/favicon.png">
+  <meta name="description" content="Dewei Blog: posts by Dewei Liu">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/style.css">
   <script src="/markdown.js" defer></script>
   <script src="/app.js" defer></script>
 </head>
 <body>
-  <div id="adminbar" hidden></div>
-  <div id="root"><p class="loading">Loading…</p></div>
+  <header class="top">
+    <a class="brand" href="/" aria-label="Dewei Blog home"><img class="logo" src="/logo.svg" alt=""><span class="name">Dewei Blog</span></a>
+    <nav id="nav" aria-label="Site"></nav>
+  </header>
+  <main id="root"><p class="muted">Loading…</p></main>
+  <footer class="bottom"><a href="https://dliu.com">dliu.com</a> · <a href="/docs">Docs</a></footer>
 </body>
 </html>

@@ -3,14 +3,14 @@
 // Post validation and the public (published) shapes written to the content bucket.
 const crypto = require('crypto');
 
-const POST_ID = /^[A-Za-z0-9_-]{12}$/;
+// Post ids are the creation date (UTC) and a two-digit number for that day: 2026102700, 2026102701, …
+const POST_ID = /^\d{10}$/;
+const MAX_POSTS_PER_DAY = 100;
 const FILE_ID = /^[A-Za-z0-9_-]{16}$/;
 const MIME_TYPE = /^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i;
-const SLUG = /^[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)*$/u;
 const STATUSES = ['draft', 'published'];
 
 const MAX_TITLE = 200;
-const MAX_SLUG = 80;
 // DynamoDB items are limited to 400 KB; this leaves room for the attachment list.
 const MAX_BODY_BYTES = 200 * 1024;
 const MAX_FILES = 100;
@@ -19,7 +19,17 @@ const EXCERPT_LENGTH = 280;
 
 class BadRequest extends Error {}
 
-const newPostId = () => crypto.randomBytes(9).toString('base64url');
+const postIdPrefix = (ms) => new Date(ms).toISOString().slice(0, 10).replace(/-/g, '');
+const postIdFor = (prefix, n) => `${prefix}${String(n).padStart(2, '0')}`;
+
+// The next free number for the day, after the highest one in use.
+function nextPostNumber(ids, prefix) {
+  let next = 0;
+  for (const id of ids) {
+    if (POST_ID.test(id) && id.startsWith(prefix)) next = Math.max(next, Number(id.slice(8)) + 1);
+  }
+  return next;
+}
 const newFileId = () => crypto.randomBytes(12).toString('base64url');
 
 function text(value, field, max, { trim = true } = {}) {
@@ -29,17 +39,6 @@ function text(value, field, max, { trim = true } = {}) {
   if (trim) clean = clean.trim();
   if (clean.length > max) throw new BadRequest(`${field} must be at most ${max} characters`);
   return clean;
-}
-
-function slugify(value) {
-  return String(value || '')
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/['’]/g, '')
-    .replace(/[^\p{L}\p{N}]+/gu, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, MAX_SLUG)
-    .replace(/-+$/, '');
 }
 
 // Only the fields that were sent, so a client can save just the title or just the status.
@@ -54,11 +53,6 @@ function parsePostUpdate(body) {
   if ('status' in body) {
     if (!STATUSES.includes(body.status)) throw new BadRequest(`Status must be one of: ${STATUSES.join(', ')}`);
     update.status = body.status;
-  }
-  if ('slug' in body && body.slug != null && body.slug !== '') {
-    const slug = slugify(text(body.slug, 'Permalink', 200));
-    if (!SLUG.test(slug)) throw new BadRequest('Permalink must contain letters or numbers');
-    update.slug = slug;
   }
   return update;
 }
@@ -130,7 +124,6 @@ function toSummary(item) {
     id: item.id,
     title: item.title || '',
     status: item.status,
-    slug: item.slug || '',
     authorName: item.authorName || '',
     createdAt: item.createdAt,
     updatedAt: item.updatedAt,
@@ -141,7 +134,6 @@ function toSummary(item) {
 function toPublicPost(item) {
   return {
     id: item.id,
-    slug: item.slug,
     title: item.title || '',
     body: item.body || '',
     authorName: item.authorName || '',
@@ -153,7 +145,7 @@ function toPublicPost(item) {
 
 function toIndexEntry(item) {
   return {
-    slug: item.slug,
+    id: item.id,
     title: item.title || '',
     excerpt: item.excerpt || '',
     cover: item.cover || '',
@@ -164,21 +156,21 @@ function toIndexEntry(item) {
 
 function buildIndex(items, now) {
   const posts = items
-    .filter((item) => item.status === 'published' && item.slug)
+    .filter((item) => item.status === 'published')
     .map(toIndexEntry)
-    .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)));
+    .sort((a, b) => String(b.publishedAt).localeCompare(String(a.publishedAt)) || b.id.localeCompare(a.id));
   return { generatedAt: now, posts };
 }
 
-const compareSummaries = (a, b) => String(b.publishedAt || b.updatedAt).localeCompare(String(a.publishedAt || a.updatedAt));
+const compareSummaries = (a, b) => String(b.publishedAt || b.updatedAt).localeCompare(String(a.publishedAt || a.updatedAt)) || b.id.localeCompare(a.id);
 
 module.exports = {
   BadRequest,
   FILE_ID,
   MAX_FILE_BYTES,
   MAX_FILES,
+  MAX_POSTS_PER_DAY,
   POST_ID,
-  SLUG,
   buildIndex,
   compareSummaries,
   derive,
@@ -186,11 +178,12 @@ module.exports = {
   fileList,
   isImageType,
   newFileId,
-  newPostId,
+  nextPostNumber,
+  postIdFor,
+  postIdPrefix,
   parsePostUpdate,
   parseUpload,
   plainText,
-  slugify,
   toApiPost,
   toIndexEntry,
   toPublicPost,

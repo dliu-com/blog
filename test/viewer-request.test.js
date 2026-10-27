@@ -9,9 +9,15 @@ vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../functions/viewer-req
 const run = (uri) => context.handler({ request: { uri, headers: {}, querystring: {} } });
 
 test('app pages are served by index.html', () => {
-  for (const uri of ['/admin', '/admin/', '/admin/new', '/admin/posts/abcdefghijkl', '/posts/hello-world', '/posts/万圣节']) {
+  for (const uri of ['/2026102701', '/2026102700/', '/admin', '/admin/', '/admin/new', '/admin/posts/2026102700']) {
     expect(run(uri).uri).toBe('/index.html');
   }
+});
+
+test('/docs is served by docs.html', () => {
+  expect(run('/docs').uri).toBe('/docs.html');
+  expect(run('/docs/').uri).toBe('/docs.html');
+  expect(run('/docs.js').uri).toBe('/docs.js');
 });
 
 test('files, the API and stored content pass through', () => {
@@ -25,10 +31,13 @@ test('old WordPress links redirect', () => {
     const res = run(uri);
     return [res.statusCode, res.headers && res.headers.location.value];
   };
-  expect(location('/hello-world/')).toEqual([301, '/posts/hello-world']);
-  expect(location('/easter-trips-to-ireland')).toEqual([301, '/posts/easter-trips-to-ireland']);
+  expect(location('/hello-world/')).toEqual([301, '/']);
+  expect(location('/easter-trips-to-ireland')).toEqual([301, '/']);
+  expect(location('/posts/2026102701')).toEqual([301, '/2026102701']);
+  expect(location('/posts/hello-world')).toEqual([301, '/']);
+  expect(location('/202610270')).toEqual([301, '/']);
   expect(location('/2025/04/')).toEqual([301, '/?m=202504']);
-  expect(location('/page/2/')).toEqual([301, '/?paged=2']);
+  expect(location('/page/2/')).toEqual([301, '/']);
   expect(location('/wp-admin/')).toEqual([302, '/admin']);
   expect(location('/wp-admin/post-new.php')).toEqual([302, '/admin']);
   expect(location('/wp-login.php')).toEqual([302, '/admin']);

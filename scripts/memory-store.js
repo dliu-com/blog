@@ -1,7 +1,7 @@
 'use strict';
 
 // In-memory stand-in for lambda/api/store.js, used by the tests and the local dev server.
-const { SUMMARY_FIELDS } = require('../lambda/api/store');
+const { Exists, SUMMARY_FIELDS } = require('../lambda/api/store');
 
 function createMemoryStore() {
   const posts = new Map();
@@ -16,16 +16,13 @@ function createMemoryStore() {
     async getPost(id) {
       return clone(posts.get(id) || null);
     },
-    async putPost(item) {
+    async putPost(item, { create = false } = {}) {
+      if (create && posts.has(item.id)) throw new Exists(`Post ${item.id} already exists`);
       posts.set(item.id, clone(item));
       return item;
     },
     async deletePost(id) {
       posts.delete(id);
-    },
-    async slugOwner(slug) {
-      const owner = [...posts.values()].find((item) => item.slug === slug);
-      return owner ? owner.id : null;
     },
   };
 }

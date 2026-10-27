@@ -5,15 +5,11 @@ import { BlogStack } from '../lib/blog-stack';
 const env = { account: '123456789012', region: 'eu-west-1' };
 const template = Template.fromStack(new BlogStack(new App(), 'BlogSite', { env }));
 
-test('posts table has a slug index and is protected', () => {
+test('posts table is keyed by post id, with no index, and is protected', () => {
   template.hasResourceProperties('AWS::DynamoDB::GlobalTable', {
     KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
     BillingMode: 'PAY_PER_REQUEST',
-    GlobalSecondaryIndexes: [Match.objectLike({
-      IndexName: 'bySlug',
-      KeySchema: [{ AttributeName: 'slug', KeyType: 'HASH' }],
-      Projection: { ProjectionType: 'KEYS_ONLY' },
-    })],
+    GlobalSecondaryIndexes: Match.absent(),
     Replicas: [Match.objectLike({
       DeletionProtectionEnabled: true,
       PointInTimeRecoverySpecification: { PointInTimeRecoveryEnabled: true },

@@ -64,7 +64,7 @@ async function seed() {
     body: 'This blog no longer runs a server around the clock. Pages are **static files** on CloudFront, '
       + 'and a small function only wakes up when someone signs in to write.\n\n'
       + '## What you can do\n\n- Write posts in Markdown\n- Attach *pictures* and files\n- Save drafts and publish when ready\n\n'
-      + '> Sign in from the **Log in** link in the sidebar to try the editor.',
+      + '> Use the **Sign in** button at the top to try the editor.',
   });
   await call('PUT', `/api/posts/${welcome.id}`, { status: 'published' });
   const trip = await call('POST', '/api/posts', {

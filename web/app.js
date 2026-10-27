@@ -1,14 +1,12 @@
 'use strict';
 
-// Public pages read static JSON (/content/index.json, /content/posts/<slug>.json) straight from CloudFront.
+// Public pages read static JSON (/content/index.json, /content/posts/<id>.json) straight from CloudFront.
 // Only the admin pages (/admin…) and signed-in authors call the API.
 (() => {
   const SITE_TITLE = 'Dewei Blog';
-  const SITE_TAGLINE = '';
-  const PER_PAGE = 10;
   const MAX_FILE_BYTES = 100 * 1024 * 1024;
   const root = document.getElementById('root');
-  const adminbar = document.getElementById('adminbar');
+  const nav = document.getElementById('nav');
   const md = window.BlogMarkdown;
 
   // ---------- helpers ----------
@@ -52,16 +50,31 @@
     return data;
   }
 
-  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }) : '');
+  const fmtDate = (iso) => (iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '');
   const fmtDateTime = (iso) => (iso ? new Date(iso).toLocaleString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '');
   const monthKey = (iso) => String(iso || '').slice(0, 7).replace('-', '');
   const monthLabel = (key) => new Date(Date.UTC(Number(key.slice(0, 4)), Number(key.slice(4)) - 1, 1))
     .toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
-  const postPath = (slug) => `/posts/${encodeURIComponent(slug)}`;
+  // Posts live at /<post id>, e.g. /2026102701.
+  const postPath = (id) => `/${id}`;
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
   const fmtSize = (bytes) => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
   const isImage = (type) => /^image\/(png|jpe?g|gif|webp|avif)$/.test(type || '');
+  const fileExt = (name) => ((/\.([A-Za-z0-9]{1,5})$/.exec(name) || [])[1] || 'file').toUpperCase();
   const untitled = (title) => title || '(no title)';
-  const setTitle = (...parts) => { document.title = [...parts.filter(Boolean), SITE_TITLE].join(' – '); };
+  const setTitle = (...parts) => { document.title = [...parts.filter(Boolean), SITE_TITLE].join(' · '); };
+  const signInUrl = () => `/auth/login?return=${encodeURIComponent(location.pathname + location.search)}`;
+
+  function notice(container, message, { error = false, link } = {}) {
+    container.replaceChildren(message ? el('div', { class: `notice${error ? ' error' : ''}`, role: error ? 'alert' : 'status' }, [
+      el('span', { text: message }), link ? ' ' : null, link ? el('a', { href: link.href, text: link.text }) : null,
+    ]) : '');
+  }
+
+  function page(main, { wide = false } = {}) {
+    root.className = wide ? 'wide' : '';
+    root.replaceChildren(...[].concat(main).filter(Boolean));
+  }
 
   // ---------- who is signed in ----------
   // The hint cookie is set at sign-in, so readers who never signed in don't call the API at all.
@@ -77,22 +90,18 @@
     }
   }
 
-  function showAdminBar(me, { editId, viewSlug } = {}) {
-    if (!me.signedIn) return;
-    adminbar.replaceChildren(
-      el('div', {}, [
-        el('a', { class: 'ab-site', href: '/', text: SITE_TITLE }),
-        el('a', { href: '/admin', text: 'Dashboard' }),
-        el('a', { href: '/admin/new', text: '+ New Post' }),
-        editId ? el('a', { href: `/admin/posts/${editId}`, text: 'Edit Post' }) : null,
-        viewSlug ? el('a', { href: postPath(viewSlug), text: 'View Post' }) : null,
-      ]),
-      el('div', {}, [
-        el('span', { text: `Howdy, ${me.name || me.user}` }),
-        el('a', { href: '/auth/logout?return=/', text: 'Log out' }),
-      ]),
-    );
-    adminbar.hidden = false;
+  // Header buttons: a clear Sign in for readers; New post, Posts and Sign out for the author.
+  function renderNav(me, { editId } = {}) {
+    if (!me.signedIn) {
+      nav.replaceChildren(el('a', { class: 'button primary sign-in', href: signInUrl(), text: 'Sign in' }));
+      return;
+    }
+    nav.replaceChildren(...[
+      editId ? el('a', { class: 'button', href: `/admin/posts/${editId}`, text: 'Edit' }) : null,
+      el('a', { class: 'button', href: '/admin', text: 'Posts' }),
+      el('a', { class: 'button primary', href: '/admin/new', text: '＋ New post' }),
+      el('a', { class: 'button', href: '/auth/logout?return=/', text: 'Sign out' }),
+    ].filter(Boolean));
   }
 
   // ---------- public site ----------
@@ -106,240 +115,119 @@
   }
   const loadIndex = async () => (await loadJson('/content/index.json')) || { posts: [] };
 
-  function sidebar(index, me) {
-    const months = new Map();
-    for (const post of index.posts) {
-      const key = monthKey(post.publishedAt);
-      months.set(key, (months.get(key) || 0) + 1);
-    }
-    const params = new URLSearchParams(location.search);
-    return el('aside', { class: 'sidebar', 'aria-label': 'Sidebar' }, [
-      el('section', { class: 'widget' }, [
-        el('form', { class: 'search-form', role: 'search', action: '/', method: 'get' }, [
-          el('label', { class: 'screen-reader-text', for: 'search-field', text: 'Search for:' }),
-          el('input', { id: 'search-field', type: 'search', name: 's', placeholder: 'Search …', value: params.get('s') || '' }),
-          el('button', { type: 'submit', text: 'Search' }),
-        ]),
-      ]),
-      index.posts.length ? el('section', { class: 'widget' }, [
-        el('h2', { class: 'widget-title', text: 'Recent Posts' }),
-        el('ul', {}, index.posts.slice(0, 5).map((post) => el('li', {}, el('a', { href: postPath(post.slug), text: untitled(post.title) })))),
-      ]) : null,
-      months.size ? el('section', { class: 'widget' }, [
-        el('h2', { class: 'widget-title', text: 'Archives' }),
-        el('ul', {}, [...months].map(([key, count]) => el('li', {}, [el('a', { href: `/?m=${key}`, text: monthLabel(key) }), ` (${count})`]))),
-      ]) : null,
-      el('section', { class: 'widget' }, [
-        el('h2', { class: 'widget-title', text: 'Meta' }),
-        el('ul', {}, me.signedIn
-          ? [el('li', {}, el('a', { href: '/admin', text: 'Site Admin' })), el('li', {}, el('a', { href: '/auth/logout?return=/', text: 'Log out' }))]
-          : [el('li', {}, el('a', { href: `/auth/login?return=${encodeURIComponent(location.pathname)}`, text: 'Log in' }))]),
-      ]),
-    ]);
-  }
-
-  function publicLayout(main, index, me, { single = false } = {}) {
-    document.body.classList.remove('admin');
-    root.replaceChildren(el('div', { class: `site${single ? ' single' : ''}` }, [
-      el('header', { class: 'site-header' }, el('div', { class: 'site-branding' }, [
-        el('p', { class: 'site-title' }, el('a', { href: '/', rel: 'home', text: SITE_TITLE })),
-        SITE_TAGLINE ? el('p', { class: 'site-description', text: SITE_TAGLINE }) : null,
-      ])),
-      el('div', { class: 'site-content' }, [
-        el('main', { class: 'content-area', id: 'main' }, main),
-        sidebar(index, me),
-      ]),
-      el('footer', { class: 'site-footer' }, [
-        `© ${new Date().getFullYear()} `, el('a', { href: 'https://dliu.com', text: 'Dewei Liu' }), ` · ${SITE_TITLE}`,
-      ]),
-    ]));
-  }
-
-  const entryMeta = (post) => el('div', { class: 'entry-meta' }, [
-    'Posted on ', el('time', { datetime: post.publishedAt, text: fmtDate(post.publishedAt) }),
-    post.authorName ? ` by ${post.authorName}` : '',
-  ]);
-
   async function homePage(me) {
     const index = await loadIndex();
     const params = new URLSearchParams(location.search);
-    const search = (params.get('s') || '').trim();
     const month = /^\d{6}$/.test(params.get('m') || '') ? params.get('m') : '';
-    const page = Math.max(1, parseInt(params.get('paged') || '1', 10) || 1);
+    const search = (params.get('s') || '').trim().toLowerCase();
     let posts = index.posts;
-    let heading = null;
-    if (search) {
-      const words = search.toLowerCase().split(/\s+/);
-      posts = posts.filter((post) => words.every((word) => `${post.title} ${post.excerpt}`.toLowerCase().includes(word)));
-      heading = `Search Results for: ${search}`;
-    } else if (month) {
+    let heading = 'Posts';
+    if (month) {
       posts = posts.filter((post) => monthKey(post.publishedAt) === month);
-      heading = `Month: ${monthLabel(month)}`;
+      heading = monthLabel(month);
+    } else if (search) {
+      posts = posts.filter((post) => search.split(/\s+/).every((word) => `${post.title} ${post.excerpt}`.toLowerCase().includes(word)));
+      heading = `Posts matching “${params.get('s').trim()}”`;
     }
-    const pages = Math.max(1, Math.ceil(posts.length / PER_PAGE));
-    const shown = posts.slice((page - 1) * PER_PAGE, page * PER_PAGE);
-    const pageLink = (n) => {
-      const next = new URLSearchParams(params);
-      if (n > 1) next.set('paged', n); else next.delete('paged');
-      const query = next.toString();
-      return query ? `/?${query}` : '/';
-    };
-
-    const main = [];
-    if (heading) main.push(el('header', { class: 'page-header' }, el('h1', { class: 'page-title', text: heading })));
-    if (!shown.length) {
-      main.push(el('section', {}, [
-        el('h2', { class: 'entry-title', text: 'Nothing Found' }),
-        el('p', { class: 'notice-empty', text: search ? 'Sorry, nothing matched your search terms. Please try again with some different keywords.' : 'No posts yet.' }),
-      ]));
-    }
-    for (const post of shown) {
-      main.push(el('article', { class: 'entry' }, [
-        el('header', {}, [
-          el('h2', { class: 'entry-title' }, el('a', { href: postPath(post.slug), rel: 'bookmark', text: untitled(post.title) })),
-          entryMeta(post),
-        ]),
-        post.cover ? el('a', { class: 'entry-cover', href: postPath(post.slug), 'aria-hidden': 'true', tabindex: '-1' }, el('img', { src: post.cover, alt: '', loading: 'lazy' })) : null,
-        el('div', { class: 'entry-summary' }, [
-          post.excerpt ? el('p', { text: post.excerpt }) : null,
-          el('a', { class: 'more-link', href: postPath(post.slug) }, ['Continue reading', el('span', { class: 'screen-reader-text', text: ` “${untitled(post.title)}”` }), ' →']),
-        ]),
-      ]));
-    }
-    if (pages > 1) {
-      main.push(el('nav', { class: 'pagination', 'aria-label': 'Posts' }, [
-        page < pages ? el('a', { href: pageLink(page + 1), text: '← Older posts' }) : el('span'),
-        page > 1 ? el('a', { href: pageLink(page - 1), text: 'Newer posts →' }) : el('span'),
-      ]));
-    }
-    setTitle(heading, page > 1 ? `Page ${page}` : '', heading || page > 1 ? '' : SITE_TAGLINE);
-    publicLayout(main, index, me);
-    showAdminBar(me);
+    setTitle(month || search ? heading : '');
+    renderNav(me);
+    page([
+      el('div', { class: 'row spread head' }, [
+        el('h1', { text: heading }),
+        month || search ? el('a', { href: '/', text: 'All posts' }) : el('span', { class: 'muted', text: posts.length ? plural(posts.length, 'post') : '' }),
+      ]),
+      posts.length
+        ? el('ul', { class: 'posts' }, posts.map((post) => el('li', {}, [
+          el('a', { class: 'title', href: postPath(post.id), text: untitled(post.title) }),
+          el('time', { datetime: post.publishedAt, text: fmtDate(post.publishedAt) }),
+        ])))
+        : el('p', { class: 'empty', text: 'No posts yet.' }),
+    ]);
   }
 
-  function notFound(index, me) {
-    setTitle('Page not found');
-    publicLayout([
-      el('header', { class: 'page-header' }, el('h1', { class: 'page-title', text: 'Oops! That page can’t be found.' })),
-      el('p', { text: 'It looks like nothing was found at this location. Maybe try a search?' }),
-    ], index, me);
-    showAdminBar(me);
+  function notFound(me) {
+    setTitle('Not found');
+    renderNav(me);
+    page(el('div', { class: 'empty' }, [el('h1', { text: 'Page not found' }), el('p', {}, el('a', { href: '/', text: 'See all posts' }))]));
   }
 
-  async function postPage(me, slug) {
-    const [index, post] = await Promise.all([loadIndex(), loadJson(`/content/posts/${encodeURIComponent(slug)}.json`)]);
-    if (!post) return notFound(index, me);
-    const content = el('div', { class: 'entry-content' }, md.render(post.body));
+  async function postPage(me, id) {
+    const post = await loadJson(`/content/posts/${id}.json`);
+    if (!post) return notFound(me);
     // Files the post doesn't show inline: pictures as a gallery, everything else as a list.
     const unused = (post.files || []).filter((file) => !post.body.includes(file.url));
     const pictures = unused.filter((file) => isImage(file.type));
     const others = unused.filter((file) => !isImage(file.type));
-    const position = index.posts.findIndex((entry) => entry.slug === post.slug);
-    const older = position >= 0 ? index.posts[position + 1] : null;
-    const newer = position > 0 ? index.posts[position - 1] : null;
 
     setTitle(untitled(post.title));
-    publicLayout([
-      el('article', { class: 'entry' }, [
-        el('header', {}, [el('h1', { class: 'entry-title', text: untitled(post.title) }), entryMeta(post)]),
-        content,
-        pictures.length ? el('div', { class: 'gallery' }, pictures.map((file) => el('a', { href: file.url }, el('img', { src: file.url, alt: file.name, loading: 'lazy' })))) : null,
-        others.length ? el('section', { class: 'attachments' }, [
-          el('h2', { text: 'Attachments' }),
-          el('ul', {}, others.map((file) => el('li', {}, [el('a', { href: file.url, text: file.name }), el('span', { class: 'size', text: ` (${fmtSize(file.size)})` })]))),
-        ]) : null,
-      ]),
-      older || newer ? el('nav', { class: 'post-navigation', 'aria-label': 'Posts' }, [
-        older ? el('div', { class: 'nav-previous' }, el('a', { href: postPath(older.slug) }, [el('span', { class: 'meta-nav', text: 'Previous Post' }), untitled(older.title)])) : null,
-        newer ? el('div', { class: 'nav-next' }, el('a', { href: postPath(newer.slug) }, [el('span', { class: 'meta-nav', text: 'Next Post' }), untitled(newer.title)])) : null,
+    renderNav(me, { editId: post.id });
+    page(el('article', { class: 'article' }, [
+      el('a', { class: 'back', href: '/', text: '← All posts' }),
+      el('h1', { text: untitled(post.title) }),
+      el('p', { class: 'meta' }, [el('time', { datetime: post.publishedAt, text: fmtDate(post.publishedAt) }), post.authorName ? ` · ${post.authorName}` : '']),
+      el('div', { class: 'prose' }, md.render(post.body)),
+      pictures.length ? el('div', { class: 'gallery' }, pictures.map((file) => el('a', { href: file.url }, el('img', { src: file.url, alt: file.name, loading: 'lazy' })))) : null,
+      others.length ? el('section', { class: 'attachments' }, [
+        el('h2', { text: 'Attachments' }),
+        el('ul', {}, others.map((file) => el('li', {}, el('a', { href: file.url }, [
+          el('span', { class: 'ext', text: fileExt(file.name) }),
+          el('span', { class: 'name', text: file.name }),
+          el('span', { class: 'size', text: fmtSize(file.size) }),
+        ])))),
       ]) : null,
-    ], index, me, { single: true });
-    showAdminBar(me, { editId: post.id });
+    ]));
+    return undefined;
   }
 
   // ---------- admin ----------
-  function adminLayout(current, main) {
-    document.body.classList.add('admin');
-    const link = (href, text, key, cls) => el('li', { class: cls }, el('a', { href, text, class: current === key ? 'current' : null }));
-    root.replaceChildren(el('div', { class: 'wp-wrap' }, [
-      el('nav', { class: 'admin-menu', 'aria-label': 'Admin menu' }, el('ul', {}, [
-        link('/admin', 'Posts', 'posts-menu'),
-        link('/admin', 'All Posts', 'posts', 'sub'),
-        link('/admin/new', 'Add New', 'new', 'sub'),
-        link('/', 'View Site', 'site'),
-      ])),
-      el('main', { class: 'admin-main' }, main),
-    ]));
-  }
-
-  function notice(container, message, { error = false, link } = {}) {
-    container.replaceChildren(message ? el('div', { class: `notice${error ? ' error' : ''}`, role: error ? 'alert' : 'status' }, [
-      el('span', { text: message }), link ? ' ' : null, link ? el('a', { href: link.href, text: link.text }) : null,
-    ]) : '');
-  }
-
   function toLogin() {
-    location.replace(`/auth/login?return=${encodeURIComponent(location.pathname + location.search)}`);
+    location.replace(signInUrl());
   }
 
-  async function postsList(me) {
+  async function postsList(me, flash) {
     setTitle('Posts');
     const notices = el('div');
     const { posts } = await api('GET', '/api/posts');
-    const filter = new URLSearchParams(location.search).get('status');
-    const shown = filter ? posts.filter((post) => post.status === filter) : posts;
-    const count = (status) => posts.filter((post) => !status || post.status === status).length;
-    const tab = (status, label) => el('li', {}, [
-      el('a', { href: status ? `/admin?status=${status}` : '/admin', class: (filter || '') === status ? 'current' : null }, [label, ' ', el('span', { class: 'count', text: `(${count(status)})` })]),
-    ]);
 
-    const rows = shown.map((post) => {
+    const rows = posts.map((post) => {
       const edit = `/admin/posts/${post.id}`;
+      const published = post.status === 'published';
       const remove = async () => {
-        if (!confirm(`Move “${untitled(post.title)}” to the trash? This deletes the post and its files permanently.`)) return;
+        if (!confirm(`Delete “${untitled(post.title)}”? This permanently deletes the post and its files.`)) return;
         try {
           await api('DELETE', `/api/posts/${post.id}`);
-          await postsList(me);
-          notice(root.querySelector('.admin-main > div'), '1 post moved to the Trash.');
+          await postsList(me, 'Post deleted.');
         } catch (error) {
           notice(notices, error.message, { error: true });
         }
       };
-      return el('tr', {}, [
-        el('td', {}, [
-          el('a', { class: 'row-title', href: edit, text: untitled(post.title) }),
-          post.status === 'draft' ? el('span', { class: 'post-state', text: ' — Draft' }) : null,
-          el('div', { class: 'row-actions' }, [
-            el('a', { href: edit, text: 'Edit' }),
-            post.status === 'published' ? [' | ', el('a', { href: postPath(post.slug), text: 'View' })] : null,
-            ' | ',
-            el('button', { type: 'button', class: 'trash', text: 'Trash', onclick: remove }),
-          ].flat()),
+      return el('li', {}, [
+        el('div', { class: 'info' }, [
+          el('a', { class: 'title', href: edit, text: untitled(post.title) }),
+          el('div', { class: 'meta' }, [
+            el('span', { class: `pill ${post.status}`, text: published ? 'Published' : 'Draft' }),
+            el('span', { text: published ? fmtDateTime(post.publishedAt) : `Edited ${fmtDateTime(post.updatedAt)}` }),
+            el('span', { text: post.id }),
+          ]),
         ]),
-        el('td', { class: 'col-author', text: post.authorName }),
-        el('td', { class: 'col-status', text: post.status === 'published' ? 'Published' : 'Draft' }),
-        el('td', { class: 'col-date' }, post.status === 'published'
-          ? ['Published', el('br'), fmtDateTime(post.publishedAt)]
-          : ['Last Modified', el('br'), fmtDateTime(post.updatedAt)]),
+        el('div', { class: 'actions' }, [
+          el('a', { class: 'button small', href: edit, text: 'Edit' }),
+          published ? el('a', { class: 'button small', href: postPath(post.id), text: 'View' }) : null,
+          el('button', { type: 'button', class: 'small danger', text: 'Delete', onclick: remove }),
+        ]),
       ]);
     });
 
-    adminLayout('posts', [
-      el('h1', { text: 'Posts' }),
-      el('a', { class: 'page-title-action', href: '/admin/new', text: 'Add New Post' }),
+    renderNav(me);
+    page([
+      el('div', { class: 'row spread head' }, [el('h1', { text: 'All posts' }), el('span', { class: 'muted', text: `${posts.filter((p) => p.status === 'published').length} published · ${plural(posts.filter((p) => p.status !== 'published').length, 'draft')}` })]),
       notices,
-      el('ul', { class: 'subsubsub' }, [tab('', 'All'), ' | ', tab('published', 'Published'), ' | ', tab('draft', 'Drafts')]),
-      el('table', { class: 'wp-list-table' }, [
-        el('thead', {}, el('tr', {}, [
-          el('th', { scope: 'col', text: 'Title' }),
-          el('th', { scope: 'col', class: 'col-author', text: 'Author' }),
-          el('th', { scope: 'col', class: 'col-status', text: 'Status' }),
-          el('th', { scope: 'col', class: 'col-date', text: 'Date' }),
-        ])),
-        el('tbody', {}, rows.length ? rows : el('tr', {}, el('td', { colspan: '4', text: 'No posts found.' }))),
+      rows.length ? el('ul', { class: 'posts admin' }, rows) : el('div', { class: 'empty' }, [
+        el('p', { text: 'No posts yet.' }),
+        el('a', { class: 'button primary', href: '/admin/new', text: 'Write your first post' }),
       ]),
     ]);
-    showAdminBar(me);
+    if (flash) notice(notices, flash);
   }
 
   async function newPost() {
@@ -351,70 +239,54 @@
     let post = await api('GET', `/api/posts/${id}`);
     let dirty = false;
     let uploading = 0;
-    let pendingSlug = null;
 
     const notices = el('div');
-    const title = el('input', { class: 'title-input', id: 'title', value: post.title, placeholder: 'Add title', 'aria-label': 'Title', maxlength: '200' });
-    const body = el('textarea', { id: 'body', 'aria-label': 'Post content (Markdown)', placeholder: 'Write your post… Markdown works: **bold**, *italic*, ## headings, - lists, [links](https://…). Drop or paste pictures here.' });
+    const title = el('input', { type: 'text', class: 'title-input', id: 'title', value: post.title, placeholder: 'Title', 'aria-label': 'Title', maxlength: '200' });
+    const body = el('textarea', { id: 'body', 'aria-label': 'Post text (Markdown)', placeholder: 'Write your post in Markdown…\n\nDrop or paste pictures here.' });
     body.value = post.body;
-    const preview = el('div', { class: 'preview entry-content', hidden: true });
+    const preview = el('div', { class: 'preview prose', hidden: true });
     const wordCount = el('span');
     const savedAt = el('span');
     const permalink = el('div', { class: 'permalink' });
-    const publishBox = el('div', { class: 'postbox' });
-    const fileList = el('ul', { class: 'file-list' });
+    const publishBox = el('section', { class: 'panel publish' });
+    const fileList = el('ul', { class: 'files' });
     const mediaInput = el('input', { type: 'file', multiple: true, hidden: true });
     const attachInput = el('input', { type: 'file', multiple: true, class: 'screen-reader-text', id: 'attach-files' });
 
     const setDirty = () => {
       dirty = true;
-      wordCount.textContent = `Word count: ${(body.value.match(/[\p{L}\p{N}]+/gu) || []).length}`;
+      wordCount.textContent = `${(body.value.match(/[\p{L}\p{N}]+/gu) || []).length} words`;
     };
     setDirty();
     dirty = false;
 
-    function siteUrl(slug) {
-      return `${location.origin}${postPath(slug)}`;
-    }
-
     function renderPermalink() {
-      const slug = pendingSlug ?? post.slug;
-      const editButton = el('button', { type: 'button', class: 'wp-button', text: 'Edit', onclick: () => {
-        const input = el('input', { value: slug || '', 'aria-label': 'Permalink', placeholder: 'my-post' });
-        permalink.replaceChildren(
-          el('b', { text: 'Permalink:' }), ` ${location.origin}/posts/`, input,
-          el('button', { type: 'button', class: 'wp-button', text: 'OK', onclick: () => { pendingSlug = input.value.trim() || null; if (pendingSlug) setDirty(); renderPermalink(); } }),
-          el('button', { type: 'button', class: 'link-delete', text: 'Cancel', onclick: renderPermalink }),
-        );
-        input.focus();
-      } });
-      if (!slug) {
-        permalink.replaceChildren(el('span', { text: 'The permalink is made from the title when you publish.' }), editButton);
-      } else {
-        const label = post.status === 'published' && !pendingSlug ? el('a', { href: postPath(slug), text: siteUrl(slug) }) : el('span', { text: siteUrl(slug) });
-        permalink.replaceChildren(el('b', { text: 'Permalink:' }), label, editButton);
-        if (pendingSlug) permalink.append(el('em', { text: '(saved when you save the post)' }));
-      }
+      const url = `${location.origin}${postPath(post.id)}`;
+      const published = post.status === 'published';
+      permalink.replaceChildren(...[
+        el('span', { text: 'Link: ' }),
+        published ? el('a', { href: postPath(post.id), text: url }) : el('span', { text: url }),
+        published ? null : el('em', { text: ' (works once published)' }),
+      ].filter(Boolean));
     }
 
     function renderPublishBox() {
       const published = post.status === 'published';
       publishBox.replaceChildren(
         el('h2', { text: 'Publish' }),
-        el('div', { class: 'inside' }, [
-          el('div', { class: 'minor-actions' }, [
-            published
-              ? el('button', { type: 'button', class: 'wp-button', text: 'Switch to Draft', onclick: () => save('draft') })
-              : el('button', { type: 'button', class: 'wp-button', text: 'Save Draft', onclick: () => save('draft') }),
-            el('button', { type: 'button', class: 'wp-button', text: 'Preview', onclick: () => showTab('preview') }),
-          ]),
-          el('p', { class: 'misc-pub' }, ['Status: ', el('b', { text: published ? 'Published' : 'Draft' })]),
-          published ? el('p', { class: 'misc-pub' }, ['Published on: ', el('b', { text: fmtDateTime(post.publishedAt) })]) : null,
-          el('p', { class: 'misc-pub' }, ['Last saved: ', el('b', { text: fmtDateTime(post.updatedAt) })]),
-        ]),
-        el('div', { class: 'major-actions' }, [
-          el('button', { type: 'button', class: 'link-delete', text: 'Move to Trash', onclick: trash }),
-          el('button', { type: 'button', class: 'wp-button primary', text: published ? 'Update' : 'Publish', onclick: () => save('published') }),
+        el('dl', { class: 'facts' }, [
+          el('dt', { text: 'Status' }), el('dd', {}, el('span', { class: `pill ${post.status}`, text: published ? 'Published' : 'Draft' })),
+          published ? [el('dt', { text: 'Published' }), el('dd', { text: fmtDateTime(post.publishedAt) })] : null,
+          el('dt', { text: 'Last saved' }), el('dd', { text: fmtDateTime(post.updatedAt) }),
+          el('dt', { text: 'Post ID' }), el('dd', { text: post.id }),
+        ].flat()),
+        el('div', { class: 'publish-actions' }, [
+          el('button', { type: 'button', class: 'primary', text: published ? 'Update' : 'Publish', onclick: () => save('published') }),
+          published
+            ? el('button', { type: 'button', text: 'Unpublish (back to draft)', onclick: () => save('draft') })
+            : el('button', { type: 'button', text: 'Save draft', onclick: () => save('draft') }),
+          published ? el('a', { class: 'button', href: postPath(post.id), text: 'View post' }) : null,
+          el('button', { type: 'button', class: 'link danger delete', text: 'Delete post', onclick: trash }),
         ]),
       );
     }
@@ -445,13 +317,13 @@
       const files = post.files || [];
       const pending = [...fileList.querySelectorAll('li.pending')];
       fileList.replaceChildren(...files.map((file) => el('li', {}, [
-        isImage(file.type) ? el('img', { class: 'thumb', src: file.url, alt: '' }) : el('span', { class: 'thumb', text: (file.name.split('.').pop() || 'file').slice(0, 4) }),
+        isImage(file.type) ? el('img', { class: 'thumb', src: file.url, alt: '' }) : el('span', { class: 'thumb', text: fileExt(file.name).slice(0, 4) }),
         el('div', {}, [
           el('a', { class: 'name', href: file.url, target: '_blank', rel: 'noopener', text: file.name }),
-          el('div', { class: 'actions' }, [
+          el('div', { class: 'file-actions' }, [
             el('span', { text: fmtSize(file.size) }),
-            el('button', { type: 'button', text: 'Insert', onclick: () => insertAtCursor(snippet(file), { block: true }) }),
-            el('button', { type: 'button', class: 'remove', text: 'Remove', onclick: () => removeFile(file) }),
+            el('button', { type: 'button', class: 'link', text: 'Insert', onclick: () => insertAtCursor(snippet(file), { block: true }) }),
+            el('button', { type: 'button', class: 'link danger', text: 'Remove', onclick: () => removeFile(file) }),
           ]),
         ]),
       ])), ...pending);
@@ -508,32 +380,28 @@
     }
 
     async function save(status) {
-      const buttons = [...root.querySelectorAll('.postbox button')];
+      const buttons = [...publishBox.querySelectorAll('button')];
       buttons.forEach((b) => { b.disabled = true; });
       const wasPublished = post.status === 'published';
       const payload = { title: title.value, body: body.value, status };
-      if (pendingSlug) payload.slug = pendingSlug;
       try {
         post = await api('PUT', `/api/posts/${post.id}`, payload);
-        pendingSlug = null;
         dirty = false;
-        const view = { href: postPath(post.slug), text: 'View post' };
+        const view = { href: postPath(post.id), text: 'View post' };
         if (status === 'published') notice(notices, wasPublished ? 'Post updated.' : 'Post published.', { link: view });
-        else notice(notices, wasPublished ? 'Post reverted to draft.' : 'Draft saved.');
+        else notice(notices, wasPublished ? 'Post moved back to drafts.' : 'Draft saved.');
         savedAt.textContent = `Saved at ${new Date().toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
         renderPublishBox();
         renderPermalink();
-        showAdminBar(me, { viewSlug: post.status === 'published' ? post.slug : null });
       } catch (error) {
         notice(notices, error.message, { error: true });
         if (error.status === 401) toLogin();
-      } finally {
         buttons.forEach((b) => { b.disabled = false; });
       }
     }
 
     async function trash() {
-      if (!confirm('Move this post to the trash? This deletes the post and its files permanently.')) return;
+      if (!confirm('Delete this post? This permanently deletes the post and its files.')) return;
       try {
         await api('DELETE', `/api/posts/${post.id}`);
         dirty = false;
@@ -567,10 +435,10 @@
       const url = prompt('Link URL', 'https://');
       if (url && url !== 'https://') wrap('[', `](${url})`, 'link text');
     }
-    const tool = (label, title, action, cls) => el('button', { type: 'button', class: cls, title, 'aria-label': title, text: label, onclick: action });
+    const tool = (label, name, action, cls) => el('button', { type: 'button', class: cls, title: name, 'aria-label': name, text: label, onclick: action });
 
     function renderPreview() {
-      preview.replaceChildren(el('h1', { class: 'entry-title', text: untitled(title.value) }), md.render(body.value));
+      preview.replaceChildren(el('h1', { text: untitled(title.value) }), md.render(body.value));
     }
     const writeTab = el('button', { type: 'button', role: 'tab', text: 'Write', onclick: () => showTab('write') });
     const previewTab = el('button', { type: 'button', role: 'tab', text: 'Preview', onclick: () => showTab('preview') });
@@ -585,13 +453,14 @@
       tool('1.', 'Numbered list', () => prefixLines((i) => `${i + 1}. `)),
       tool('</>', 'Code', () => wrap('`')),
       tool('—', 'Horizontal line', () => insertAtCursor('---', { block: true })),
+      tool('🖼 Picture or file', 'Insert a picture or file', () => mediaInput.click()),
     ]);
     function showTab(name) {
       const write = name === 'write';
       writeTab.setAttribute('aria-selected', String(write));
       previewTab.setAttribute('aria-selected', String(!write));
       body.hidden = !write;
-      toolbar.hidden = !write;
+      toolbar.style.visibility = write ? '' : 'hidden';
       preview.hidden = write;
       if (!write) renderPreview();
       else body.focus();
@@ -610,16 +479,16 @@
       }
     });
     const dropTarget = (node, options) => {
-      node.addEventListener('dragover', (event) => { event.preventDefault(); node.classList.add('dragover'); });
-      node.addEventListener('dragleave', () => node.classList.remove('dragover'));
+      node.addEventListener('dragover', (event) => { event.preventDefault(); node.classList.add('over'); });
+      node.addEventListener('dragleave', () => node.classList.remove('over'));
       node.addEventListener('drop', (event) => {
         event.preventDefault();
-        node.classList.remove('dragover');
+        node.classList.remove('over');
         if (event.dataTransfer.files.length) uploadFiles(event.dataTransfer.files, options);
       });
     };
     dropTarget(body, { insert: true });
-    const dropzone = el('label', { class: 'dropzone', for: 'attach-files' }, ['Drop files to upload', el('br'), 'or ', el('u', { text: 'select files' })]);
+    const dropzone = el('label', { class: 'drop', for: 'attach-files' }, ['Drop files here or ', el('u', { text: 'choose files' })]);
     dropTarget(dropzone, {});
     document.addEventListener('keydown', (event) => {
       if ((event.metaKey || event.ctrlKey) && event.key === 's') {
@@ -634,21 +503,17 @@
       }
     });
 
-    setTitle('Edit Post');
-    adminLayout(post.createdAt === post.updatedAt && !post.title ? 'new' : 'posts', [
-      el('h1', { text: 'Edit Post' }),
-      el('a', { class: 'page-title-action', href: '/admin/new', text: 'Add New Post' }),
+    setTitle(post.title ? `Edit: ${post.title}` : 'New post');
+    renderNav(me);
+    page([
+      el('div', { class: 'row spread head' }, [el('h1', { text: post.createdAt === post.updatedAt && !post.title ? 'New post' : 'Edit post' }), el('a', { href: '/admin', text: '← All posts' })]),
       notices,
-      el('div', { class: 'post-columns' }, [
+      el('div', { class: 'editor-grid' }, [
         el('div', {}, [
           title,
           permalink,
           el('div', { class: 'editor' }, [
-            el('div', { class: 'editor-tools' }, [
-              el('div', {}, [el('button', { type: 'button', class: 'wp-button', text: '📎 Add Media', onclick: () => mediaInput.click() }), mediaInput]),
-              el('div', { class: 'editor-tabs', role: 'tablist' }, [writeTab, previewTab]),
-            ]),
-            toolbar,
+            el('div', { class: 'editor-bar' }, [toolbar, el('div', { class: 'tabs', role: 'tablist' }, [writeTab, previewTab]), mediaInput]),
             body,
             preview,
             el('div', { class: 'editor-status' }, [wordCount, savedAt]),
@@ -656,25 +521,26 @@
         ]),
         el('div', {}, [
           publishBox,
-          el('div', { class: 'postbox' }, [
-            el('h2', { text: 'Attachments' }),
-            el('div', { class: 'inside' }, [attachInput, dropzone, fileList]),
+          el('section', { class: 'panel' }, [
+            el('h2', { text: 'Files' }),
+            el('p', { class: 'muted small', text: 'Pictures and files shown at the end of the post, unless inserted into the text.' }),
+            attachInput, dropzone, fileList,
           ]),
         ]),
       ]),
-    ]);
+    ], { wide: true });
     renderPermalink();
     renderPublishBox();
     renderFiles();
     showTab('write');
     if (!post.title) title.focus();
-    showAdminBar(me, { viewSlug: post.status === 'published' ? post.slug : null });
   }
 
   async function adminPage() {
     const me = await whoAmI({ force: true });
     if (me.configured === false) {
-      adminLayout('', [el('h1', { text: 'Sign-in is not configured' }), el('p', { text: 'Run "make set-secrets" to store the Microsoft Entra app settings.' })]);
+      renderNav(me);
+      page([el('h1', { text: 'Sign-in is not configured' }), el('p', { text: 'Run "make set-secrets" to store the Microsoft Entra app settings.' })]);
       return;
     }
     if (!me.signedIn) return toLogin();
@@ -682,12 +548,14 @@
     try {
       if (path === '/admin') return await postsList(me);
       if (path === '/admin/new') return await newPost();
-      const match = /^\/admin\/posts\/([A-Za-z0-9_-]{12})$/.exec(path);
+      const match = /^\/admin\/posts\/(\d{10})$/.exec(path);
       if (match) return await editor(me, match[1]);
-      adminLayout('', [el('h1', { text: 'Page not found' }), el('p', {}, el('a', { href: '/admin', text: 'Back to Posts' }))]);
+      renderNav(me);
+      page([el('h1', { text: 'Page not found' }), el('p', {}, el('a', { href: '/admin', text: 'Back to all posts' }))]);
     } catch (error) {
       if (error.status === 401) return toLogin();
-      adminLayout('', [el('h1', { text: error.status === 404 ? 'Post not found' : 'Something went wrong' }), el('p', { text: error.message }), el('p', {}, el('a', { href: '/admin', text: 'Back to Posts' }))]);
+      renderNav(me);
+      page([el('h1', { text: error.status === 404 ? 'Post not found' : 'Something went wrong' }), el('p', { text: error.message }), el('p', {}, el('a', { href: '/admin', text: 'Back to all posts' }))]);
     }
     return undefined;
   }
@@ -698,17 +566,13 @@
     if (path === '/admin' || path.startsWith('/admin/')) return adminPage();
     const me = await whoAmI();
     if (path === '/' || path === '/index.html') return homePage(me);
-    const match = /^\/posts\/([^/]+)\/?$/.exec(path);
-    if (match) {
-      let slug;
-      try { slug = decodeURIComponent(match[1]); } catch { slug = ''; }
-      return postPage(me, slug.toLowerCase());
-    }
-    return notFound(await loadIndex(), me);
+    const match = /^\/(\d{10})\/?$/.exec(path);
+    if (match) return postPage(me, match[1]);
+    return notFound(me);
   }
 
   start().catch((error) => {
     console.error(error);
-    root.replaceChildren(el('p', { class: 'loading', text: 'Something went wrong. Please reload the page.' }));
+    root.replaceChildren(el('p', { class: 'empty', text: 'Something went wrong. Please reload the page.' }));
   });
 })();

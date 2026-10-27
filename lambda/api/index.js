@@ -3,10 +3,10 @@
 const auth = require('./auth');
 const { loadConfig, NotConfigured } = require('./config');
 const { createFiles, mediaKey, mediaUrl, servedType } = require('./s3');
-const { createStore, NotFound, TooLarge } = require('./store');
+const { createStore, Exists, NotFound, TooLarge } = require('./store');
 const {
-  BadRequest, FILE_ID, MAX_FILES, POST_ID, buildIndex, compareSummaries, derive, newFileId, newPostId,
-  parsePostUpdate, parseUpload, slugify, toApiPost, toPublicPost, toSummary,
+  BadRequest, FILE_ID, MAX_FILES, MAX_POSTS_PER_DAY, POST_ID, buildIndex, compareSummaries, derive, newFileId, nextPostNumber, postIdFor, postIdPrefix,
+  parsePostUpdate, parseUpload, toApiPost, toPublicPost, toSummary,
 } = require('./posts');
 
 const SECURITY_HEADERS = {
@@ -83,31 +83,20 @@ function createHandler(deps = {}) {
     return item;
   }
 
-  // A permalink no other post uses: "my-trip", else "my-trip-2", "my-trip-3", …
-  async function uniqueSlug(post, wanted) {
-    const base = wanted || slugify(post.title) || post.id.toLowerCase();
-    for (let n = 1; n < 1000; n += 1) {
-      const candidate = n === 1 ? base : `${base.slice(0, 75)}-${n}`;
-      const owner = await store.slugOwner(candidate);
-      if (!owner || owner === post.id) return candidate;
-    }
-    throw new BadRequest('Choose a different permalink');
-  }
-
-  // Published posts are static JSON in the content bucket; readers never call the API.
+  // Published posts are static JSON in the content bucket (posts/<id>.json); readers never call the API.
   async function syncPublic(before, after) {
-    const wasPublished = Boolean(before && before.status === 'published' && before.slug);
-    const isPublished = Boolean(after && after.status === 'published' && after.slug);
-    if (wasPublished && (!isPublished || before.slug !== after.slug)) await files.deleteContent(`posts/${before.slug}.json`);
-    if (isPublished) await files.putContent(`posts/${after.slug}.json`, toPublicPost(after));
+    const wasPublished = Boolean(before && before.status === 'published');
+    const isPublished = Boolean(after && after.status === 'published');
+    if (wasPublished && !isPublished) await files.deleteContent(`posts/${before.id}.json`);
+    if (isPublished) await files.putContent(`posts/${after.id}.json`, toPublicPost(after));
     if (wasPublished || isPublished) await files.putContent('index.json', buildIndex(await store.listPosts(), isoNow()));
   }
 
-  async function save(before, post, user) {
+  async function save(before, post, user, { create = false } = {}) {
     post.updatedAt = isoNow();
     post.updatedBy = user.user;
     derive(post);
-    await store.putPost(post);
+    await store.putPost(post, { create });
     await syncPublic(before, post);
     return post;
   }
@@ -139,7 +128,7 @@ function createHandler(deps = {}) {
         const fields = parsePostUpdate(readBody(event) || {});
         const now = isoNow();
         const post = {
-          id: newPostId(),
+          id: '',
           title: fields.title || '',
           body: fields.body || '',
           status: 'draft',
@@ -148,7 +137,18 @@ function createHandler(deps = {}) {
           authorName: user.name || user.user,
           createdAt: now,
         };
-        return json(201, toApiPost(await save(null, post, user)));
+        // Ids are yyyymmddNN; the conditional write makes two posts created at once take different numbers.
+        const prefix = postIdPrefix(clock());
+        let n = nextPostNumber((await store.listPosts()).map((item) => item.id), prefix);
+        for (; n < MAX_POSTS_PER_DAY; n += 1) {
+          post.id = postIdFor(prefix, n);
+          try {
+            return json(201, toApiPost(await save(null, post, user, { create: true })));
+          } catch (error) {
+            if (!(error instanceof Exists)) throw error;
+          }
+        }
+        throw new HttpError(409, `At most ${MAX_POSTS_PER_DAY} posts can be created in one day`);
       }
     }
 
@@ -161,11 +161,7 @@ function createHandler(deps = {}) {
         if ('title' in update) post.title = update.title;
         if ('body' in update) post.body = update.body;
         if ('status' in update) post.status = update.status;
-        if (update.slug && update.slug !== post.slug) post.slug = await uniqueSlug(post, update.slug);
-        if (post.status === 'published') {
-          if (!post.slug) post.slug = await uniqueSlug(post);
-          if (!post.publishedAt) post.publishedAt = isoNow();
-        }
+        if (post.status === 'published' && !post.publishedAt) post.publishedAt = isoNow();
         return json(200, toApiPost(await save(before, post, user)));
       }
       if (method === 'DELETE') {

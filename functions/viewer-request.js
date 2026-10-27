@@ -1,8 +1,9 @@
 // CloudFront Function (cloudfront-js-2.0), viewer request on the site's default behaviour.
-// - /posts/<slug> and /admin/... are pages of the single-page app (index.html).
-// - Old WordPress links keep working: /<slug>/ → /posts/<slug>, /2025/04/ → /?m=202504,
-//   /page/2/ → /?paged=2, /wp-admin and /wp-login.php → /admin.
-var RESERVED = { posts: true, admin: true, api: true, auth: true, content: true, media: true, page: true };
+// - Posts live at /<postId> (yyyymmddNN, e.g. /2026102701); they and /admin/... are pages of the
+//   single-page app (index.html). /docs is docs.html.
+// - Old links keep working: /posts/<postId> → /<postId>; WordPress /2025/04/ → /?m=202504,
+//   /page/2/ and /<slug>/ → / (one list, no slugs), /wp-admin and /wp-login.php → /admin.
+var RESERVED = { api: true, auth: true, content: true, media: true };
 
 function redirect(location, status) {
   return {
@@ -16,16 +17,23 @@ function handler(event) {
   var request = event.request;
   var uri = request.uri;
   var match;
-  if (uri === '/admin' || uri.indexOf('/admin/') === 0 || uri.indexOf('/posts/') === 0) {
+  if (/^\/\d{10}\/?$/.test(uri) || uri === '/admin' || uri.indexOf('/admin/') === 0) {
     request.uri = '/index.html';
     return request;
   }
+  if (uri === '/docs' || uri === '/docs/') {
+    request.uri = '/docs.html';
+    return request;
+  }
+  match = /^\/posts\/(\d{10})\/?$/.exec(uri);
+  if (match) return redirect('/' + match[1], 301);
+  if (uri === '/posts' || uri.indexOf('/posts/') === 0) return redirect('/', 301);
   if (uri === '/wp-admin' || uri.indexOf('/wp-admin/') === 0 || uri === '/wp-login.php') return redirect('/admin', 302);
   match = /^\/(\d{4})\/(\d{2})\/?$/.exec(uri);
   if (match) return redirect('/?m=' + match[1] + match[2], 301);
   match = /^\/page\/(\d{1,4})\/?$/.exec(uri);
-  if (match) return redirect('/?paged=' + match[1], 301);
+  if (match) return redirect('/', 301);
   match = /^\/([^\/.]+)\/?$/.exec(uri);
-  if (match && !RESERVED[match[1]]) return redirect('/posts/' + match[1], 301);
+  if (match && !RESERVED[match[1]]) return redirect('/', 301);
   return request;
 }

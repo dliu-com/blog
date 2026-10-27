@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Docs · Dewei Blog</title>
+  <meta name="description" content="How blog.dliu.com works: architecture, running costs and security">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/style.css">
+  <link rel="stylesheet" href="/docs.css">
+  <script type="module" src="/docs.js"></script>
+</head>
+<body>
+  <header class="top">
+    <a class="brand" href="/" aria-label="Dewei Blog home"><img class="logo" src="/logo.svg" alt=""><span class="name">Dewei Blog</span></a>
+    <nav id="nav" aria-label="Site"></nav>
+  </header>
+  <main class="docs-main">
+    <nav class="info-tabs" aria-label="Docs sections">
+      <a href="#architecture" data-tab="architecture">Technical architecture</a>
+      <a href="#cost" data-tab="cost">Cost</a>
+      <a href="#security" data-tab="security">Security</a>
+    </nav>
+    <article id="architecture" class="docs">
+      <h2>How it works</h2>
+      <p class="lead">blog.dliu.com is a blog that anyone can read and only the owner can write. There are no servers: published posts are plain files in S3, CloudFront delivers them, and one small Lambda function runs only when the owner signs in, saves a post or uploads a file.</p>
+      <noscript><p>The diagrams on this page need JavaScript.</p></noscript>
+    </article>
+    <article id="cost" class="docs" hidden>
+      <h2>Running costs</h2>
+      <p class="lead">Everything is billed per use. With nobody writing, the only charge is storing the pictures and files in S3; reading the blog runs no code.</p>
+    </article>
+    <article id="security" class="docs" hidden>
+      <h2>Security</h2>
+      <p class="lead">Anyone can read published posts; only the owner, signed in with Microsoft, can write, publish or delete. Draft text never leaves the database.</p>
+    </article>
+  </main>
+  <footer class="bottom"><a href="https://dliu.com">dliu.com</a> · <a href="/">Dewei Blog</a></footer>
+</body>
+</html>

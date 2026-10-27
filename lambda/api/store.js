@@ -1,11 +1,11 @@
 'use strict';
 
-// Posts table: one item per post, keyed by id. The bySlug index finds which post owns a permalink.
-const SLUG_INDEX = 'bySlug';
-const SUMMARY_FIELDS = ['id', 'title', 'status', 'slug', 'authorName', 'createdAt', 'updatedAt', 'publishedAt', 'excerpt', 'cover'];
+// Posts table: one item per post, keyed by id (yyyymmddNN).
+const SUMMARY_FIELDS = ['id', 'title', 'status', 'authorName', 'createdAt', 'updatedAt', 'publishedAt', 'excerpt', 'cover'];
 
 class NotFound extends Error {}
 class TooLarge extends Error {}
+class Exists extends Error {}
 
 let defaultClient;
 function documentClient() {
@@ -49,10 +49,15 @@ function createStore({ client, table = process.env.TABLE_NAME } = {}) {
       return result.Item || null;
     },
 
-    async putPost(item) {
+    async putPost(item, { create = false } = {}) {
       try {
-        await send(new lib.PutCommand({ TableName: table, Item: item }));
+        await send(new lib.PutCommand({
+          TableName: table,
+          Item: item,
+          ...(create ? { ConditionExpression: 'attribute_not_exists(id)' } : {}),
+        }));
       } catch (error) {
+        if (create && error && error.name === 'ConditionalCheckFailedException') throw new Exists(`Post ${item.id} already exists`);
         if (isTooLarge(error)) throw new TooLarge('This post is too large to save');
         throw error;
       }
@@ -62,20 +67,7 @@ function createStore({ client, table = process.env.TABLE_NAME } = {}) {
     async deletePost(id) {
       await send(new lib.DeleteCommand({ TableName: table, Key: { id } }));
     },
-
-    // Id of the post using this permalink, or null.
-    async slugOwner(slug) {
-      const result = await send(new lib.QueryCommand({
-        TableName: table,
-        IndexName: SLUG_INDEX,
-        KeyConditionExpression: '#slug = :slug',
-        ExpressionAttributeNames: { '#slug': 'slug' },
-        ExpressionAttributeValues: { ':slug': slug },
-        Limit: 1,
-      }));
-      return (result.Items && result.Items[0] && result.Items[0].id) || null;
-    },
   };
 }
 
-module.exports = { createStore, NotFound, SLUG_INDEX, SUMMARY_FIELDS, TooLarge };
+module.exports = { createStore, Exists, NotFound, SUMMARY_FIELDS, TooLarge };

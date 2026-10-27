@@ -91,8 +91,39 @@ describe('authors only', () => {
   test('unknown ids and routes are 404s', async () => {
     const { call } = setup();
     expect((await call('GET', '/api/posts/nope')).statusCode).toBe(404);
-    expect((await call('GET', '/api/posts/AAAAAAAAAAAA')).statusCode).toBe(404);
+    expect((await call('GET', '/api/posts/2026010199')).statusCode).toBe(404);
     expect((await call('GET', '/api/other')).statusCode).toBe(404);
+  });
+});
+
+describe('post ids', () => {
+  test('are the UTC date and a number for that day', async () => {
+    const { call, store, tick } = setup();
+    expect((await createPost(call)).id).toBe('2026100100');
+    expect((await createPost(call)).id).toBe('2026100101');
+    const third = await createPost(call);
+    expect(third.id).toBe('2026100102');
+    await call('DELETE', `/api/posts/${third.id}`);
+    expect((await createPost(call)).id).toBe('2026100102');
+    tick(12 * 3600 * 1000);
+    expect((await createPost(call)).id).toBe('2026100200');
+    expect([...store.posts.keys()].sort()).toEqual(['2026100100', '2026100101', '2026100102', '2026100200']);
+  });
+
+  test('skip a number taken by a concurrent create', async () => {
+    const { call, store } = setup();
+    const listPosts = store.listPosts;
+    store.listPosts = async () => [];
+    store.posts.set('2026100100', { id: '2026100100', title: 'Racing', status: 'draft', files: {} });
+    expect((await createPost(call)).id).toBe('2026100101');
+    store.listPosts = listPosts;
+  });
+
+  test('allow 100 posts a day', async () => {
+    const { call, store } = setup();
+    for (let n = 0; n < 100; n += 1) store.posts.set(`20261001${String(n).padStart(2, '0')}`, { id: `20261001${String(n).padStart(2, '0')}`, status: 'draft', files: {} });
+    const res = await call('POST', '/api/posts', { body: {} });
+    expect(res.statusCode).toBe(409);
   });
 });
 
@@ -101,7 +132,7 @@ describe('writing and publishing', () => {
     const { call, files } = setup();
     const post = await createPost(call, { title: 'Easter trip' });
     expect(post).toMatchObject({ title: 'Easter trip', body: '', status: 'draft', author: 'user@example.com', authorName: 'Dewei', files: [] });
-    expect(post.id).toMatch(/^[A-Za-z0-9_-]{12}$/);
+    expect(post.id).toBe('2026100100');
     expect(files.objects.size).toBe(0);
 
     const saved = await call('PUT', `/api/posts/${post.id}`, { body: { body: 'Day one in **Galway**.' } });
@@ -112,15 +143,15 @@ describe('writing and publishing', () => {
     expect(list.json.posts).toEqual([expect.objectContaining({ id: post.id, title: 'Easter trip', status: 'draft' })]);
   });
 
-  test('publishing writes the post and the index as static JSON', async () => {
+  test('publishing writes the post and the index as static JSON, by post id', async () => {
     const { call, files } = setup();
     const post = await createPost(call, { title: 'Easter trip to Ireland', body: 'Hello\n\n![cliffs](/media/x/y/cliffs.jpg)' });
     const res = await call('PUT', `/api/posts/${post.id}`, { body: { status: 'published' } });
-    expect(res.json).toMatchObject({ status: 'published', slug: 'easter-trip-to-ireland', publishedAt: new Date(NOW).toISOString() });
+    expect(res.json).toMatchObject({ id: '2026100100', status: 'published', publishedAt: new Date(NOW).toISOString() });
+    expect(res.json).not.toHaveProperty('slug');
 
-    expect(files.json('posts/easter-trip-to-ireland.json')).toEqual({
-      id: post.id,
-      slug: 'easter-trip-to-ireland',
+    expect(files.json('posts/2026100100.json')).toEqual({
+      id: '2026100100',
       title: 'Easter trip to Ireland',
       body: 'Hello\n\n![cliffs](/media/x/y/cliffs.jpg)',
       authorName: 'Dewei',
@@ -130,7 +161,7 @@ describe('writing and publishing', () => {
     });
     expect(files.json('index.json')).toEqual({
       generatedAt: new Date(NOW).toISOString(),
-      posts: [{ slug: 'easter-trip-to-ireland', title: 'Easter trip to Ireland', excerpt: 'Hello', cover: '/media/x/y/cliffs.jpg', authorName: 'Dewei', publishedAt: new Date(NOW).toISOString() }],
+      posts: [{ id: '2026100100', title: 'Easter trip to Ireland', excerpt: 'Hello', cover: '/media/x/y/cliffs.jpg', authorName: 'Dewei', publishedAt: new Date(NOW).toISOString() }],
     });
     expect(files.objects.get('content/index.json').headers['cache-control']).toBe('no-cache');
   });
@@ -143,34 +174,20 @@ describe('writing and publishing', () => {
     const second = await createPost(call, { title: 'Second' });
     await call('PUT', `/api/posts/${second.id}`, { body: { status: 'published' } });
     await createPost(call, { title: 'Still a draft' });
-    expect(files.json('index.json').posts.map((p) => p.slug)).toEqual(['second', 'first']);
+    expect(files.json('index.json').posts.map((p) => p.title)).toEqual(['Second', 'First']);
 
     tick();
     const edited = await call('PUT', `/api/posts/${first.id}`, { body: { title: 'First, edited', status: 'published' } });
     expect(edited.json.publishedAt).toBe(new Date(NOW).toISOString());
-    expect(edited.json.slug).toBe('first');
-    expect(files.json('posts/first.json').title).toBe('First, edited');
+    expect(files.json(`posts/${first.id}.json`).title).toBe('First, edited');
   });
 
-  test('permalinks are unique and can be changed', async () => {
-    const { call, files } = setup();
-    const a = await createPost(call, { title: 'Trip' });
-    const b = await createPost(call, { title: 'Trip' });
-    expect((await call('PUT', `/api/posts/${a.id}`, { body: { status: 'published' } })).json.slug).toBe('trip');
-    expect((await call('PUT', `/api/posts/${b.id}`, { body: { status: 'published' } })).json.slug).toBe('trip-2');
-
-    const moved = await call('PUT', `/api/posts/${b.id}`, { body: { slug: 'Halloween Trip · 2025' } });
-    expect(moved.json.slug).toBe('halloween-trip-2025');
-    expect(files.json('posts/trip-2.json')).toBeNull();
-    expect(files.json('posts/halloween-trip-2025.json').id).toBe(b.id);
-    expect((await call('PUT', `/api/posts/${b.id}`, { body: { slug: 'trip' } })).json.slug).toBe('trip-2');
-    expect((await call('PUT', `/api/posts/${b.id}`, { body: { slug: '!!!' } })).statusCode).toBe(400);
-  });
-
-  test('non-latin titles get readable permalinks', async () => {
+  test('an old slug field is ignored', async () => {
     const { call } = setup();
-    const post = await createPost(call, { title: '🎃 万圣节 Trip' });
-    expect((await call('PUT', `/api/posts/${post.id}`, { body: { status: 'published' } })).json.slug).toBe('万圣节-trip');
+    const post = await createPost(call, { title: 'Trip' });
+    const res = await call('PUT', `/api/posts/${post.id}`, { body: { slug: 'my-trip', status: 'published' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json).not.toHaveProperty('slug');
   });
 
   test('switching back to draft or deleting removes the public copy', async () => {
@@ -181,11 +198,11 @@ describe('writing and publishing', () => {
     await call('PUT', `/api/posts/${b.id}`, { body: { status: 'published' } });
 
     await call('PUT', `/api/posts/${a.id}`, { body: { status: 'draft' } });
-    expect(files.json('posts/alpha.json')).toBeNull();
-    expect(files.json('index.json').posts.map((p) => p.slug)).toEqual(['beta']);
+    expect(files.json(`posts/${a.id}.json`)).toBeNull();
+    expect(files.json('index.json').posts.map((p) => p.id)).toEqual([b.id]);
 
     expect((await call('DELETE', `/api/posts/${b.id}`)).json).toEqual({ deleted: b.id });
-    expect(files.json('posts/beta.json')).toBeNull();
+    expect(files.json(`posts/${b.id}.json`)).toBeNull();
     expect(files.json('index.json').posts).toEqual([]);
     expect((await call('GET', `/api/posts/${b.id}`)).statusCode).toBe(404);
   });
@@ -217,12 +234,12 @@ describe('files', () => {
     expect((await call('PUT', `/api/posts/${post.id}/files/${fileId}`, { body: { name: 'x' } })).json.files).toHaveLength(1);
 
     await call('PUT', `/api/posts/${post.id}`, { body: { status: 'published' } });
-    expect(files.json('posts/photos.json').files).toEqual([{ id: fileId, name: 'Cliffs of Moher.JPG', type: 'image/jpeg', size: 10, url: `/${key}` }]);
+    expect(files.json(`posts/${post.id}.json`).files).toEqual([{ id: fileId, name: 'Cliffs of Moher.JPG', type: 'image/jpeg', size: 10, url: `/${key}` }]);
 
     const removed = await call('DELETE', `/api/posts/${post.id}/files/${fileId}`);
     expect(removed.json.files).toEqual([]);
     expect(files.objects.has(key)).toBe(false);
-    expect(files.json('posts/photos.json').files).toEqual([]);
+    expect(files.json(`posts/${post.id}.json`).files).toEqual([]);
     expect(files.json('index.json').posts[0].cover).toBe('');
   });
 
