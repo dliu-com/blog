@@ -1,15 +1,29 @@
+AWS_REGION ?= eu-west-1
+STACK_NAME ?= BlogSite
+
+.PHONY: install test synth diff deploy set-secrets outputs dev
+
+install:
+	npm ci
+
+test:
+	npm test -- --runInBand
 
 synth:
-	cd cdk && npm run synth
-	cd cdk-corrected && npm run synth
-deploy: synth
-	cd cdk-corrected && npm run deploy
-install:
-	cd cdk && npm install
-	cd cdk-corrected && npm install
-deploy-storage:
-	aws cloudformation create-stack --region eu-west-2 --stack-name BlogStorage --template-body file://storage/cloudformation.yml --tags Key=service,Value=blog;
-update-storage:
-	aws cloudformation update-stack --region eu-west-2 --stack-name BlogStorage --template-body file://storage/cloudformation.yml --tags Key=service,Value=blog;
-destroy:
-	cd cdk && npm run destroy
+	AWS_REGION=$(AWS_REGION) npm run synth -- --quiet
+
+diff:
+	AWS_REGION=$(AWS_REGION) npm run diff
+
+deploy: test
+	AWS_REGION=$(AWS_REGION) npm run deploy
+
+set-secrets:
+	AWS_REGION=$(AWS_REGION) scripts/set-secrets.sh
+
+outputs:
+	aws cloudformation describe-stacks --region $(AWS_REGION) --stack-name $(STACK_NAME) \
+		--query 'Stacks[0].Outputs[].[OutputKey,OutputValue]' --output table
+
+dev:
+	node scripts/dev-server.js

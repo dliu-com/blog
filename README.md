@@ -1,3 +1,144 @@
 # Dewei Blog
 
-Visit at [blog.dliu.com](https://blog.dliu.com/)
+The blog at **https://blog.dliu.com**: a small, serverless blog with a WordPress-style theme and editor.
+
+It replaces the old WordPress container, which ran around the clock. The new blog has **no server running when nobody is using it**:
+
+- Readers get static files and pre-rendered JSON from CloudFront and S3. Reading the blog never runs a Lambda function.
+- A Lambda function runs only when an author signs in, saves a post or uploads a file.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  R[Reader] --> CF[CloudFront<br/>blog.dliu.com]
+  A[Author] --> CF
+  CF -->|"/, /posts/*, /admin"| Site[(S3 site bucket<br/>index.html, app.js, css)]
+  CF -->|"/content/*, /media/*" OAC| Content[(S3 content bucket<br/>published JSON + files)]
+  CF -->|"/api/*, /auth/*" OAC| L[Lambda Function URL<br/>authors only]
+  L --> DDB[(DynamoDB<br/>posts)]
+  L --> Content
+  L --> SSM[SSM Parameter Store<br/>Entra settings]
+  A -. "presigned PUT upload" .-> Content
+  L -. OIDC .-> Entra[Microsoft Entra ID]
+```
+
+| Piece | Role |
+| --- | --- |
+| CloudFront | Single domain, TLS, security headers, SPA routing and WordPress URL redirects. The redirects are handled by a CloudFront Function (`functions/viewer-request.js`). |
+| Site bucket | Static frontend from `web/`. |
+| Content bucket (private) | `content/index.json` (list of published posts), `content/posts/<slug>.json` (one file per published post) and `media/<postId>/<fileId>/<name>` (uploaded files). |
+| Lambda (`lambda/api`) | Authoring API and Microsoft sign-in. Reached only through CloudFront (Function URL with IAM auth + OAC). Reserved concurrency is 10. |
+| DynamoDB | Source of truth for posts, drafts included. On-demand billing, point-in-time recovery, deletion protection. |
+
+Cost at low traffic is a few cents a month for requests and storage, plus the Route 53 zone the other dliu.com apps already share. Nothing is billed per hour.
+
+## Writing posts
+
+1. Open https://blog.dliu.com/admin (or `/wp-admin`, which redirects there) and sign in with a Microsoft account in the `dliu.com` organisation.
+2. Click **Add New**. Write the title and the body in Markdown. Use the toolbar or **Preview** to check how it looks.
+3. Add pictures and files by dragging them onto the editor, pasting them, or clicking **Add Media**:
+   - Images are inserted into the post where the cursor is.
+   - Other files appear under **Attachments** on the post page.
+   - Each file can be up to 100 MB, with up to 100 files per post.
+4. Click **Save Draft** (or press Ctrl/⌘+S) to keep the post private, or **Publish** to make it public. **Switch to Draft** unpublishes it. **Move to Trash** deletes the post and its files.
+
+While you are signed in, an admin bar appears on the public pages with **Dashboard**, **+ New Post** and **Edit Post** links.
+
+Images, PDFs, plain text, audio and video open in the browser. Other file types are always downloaded rather than displayed.
+
+## Repository layout
+
+```
+web/            frontend (vanilla JS, no build step): index.html, app.js, markdown.js, style.css
+lambda/api/     authoring API: routes (index.js), posts, S3 signing, DynamoDB store, Entra auth, config
+functions/      CloudFront viewer-request function (routing + WordPress redirects)
+lib/, bin/      AWS CDK stack (BlogSite)
+scripts/        dev server with in-memory store, set-secrets.sh
+test/           Jest tests (API, S3 signing, routing, markdown sanitising, stack)
+archive/        the previous WordPress Docker setup, kept for reference only
+```
+
+## Local development
+
+```sh
+make install
+make dev        # http://localhost:8787
+```
+
+The dev server uses an in-memory store and files, and has a fake sign-in, so it needs no AWS access. Run the tests with:
+
+```sh
+make test
+```
+
+## Sign-in setup (Microsoft Entra)
+
+You only need to do this once, and again whenever the client secret expires.
+
+1. In the Entra admin centre, create an app registration in your tenant (single tenant). Add a **Web** redirect URI: `https://blog.dliu.com/auth/callback`.
+2. Create a client secret.
+3. Run `make set-secrets`. It asks for the client ID, the client secret and the tenant ID, and stores them in SSM under `/blog/` (the secret as a SecureString). Values never go on the command line or into the repository.
+
+The Lambda reads these values at runtime, so after renewing a secret you only need to run `make set-secrets` again; no redeploy is needed, and the new value is picked up within five minutes. Sessions are signed with a key derived from the secret, so renewing it signs everyone out.
+
+Only accounts in the `dliu.com` domain may write. Set the `ALLOWED_DOMAIN` environment variable on the function to change this.
+
+## Deploy
+
+You need AWS credentials for the account that hosts dliu.com. The stack deploys to `eu-west-1`; the certificate is created in `us-east-1`.
+
+```sh
+make deploy     # runs the tests, then cdk deploy BlogSite
+make outputs    # show stack outputs
+make diff       # preview changes
+```
+
+CDK context options:
+
+- `-c subdomain=blog-next` deploys to another hostname, for example to try changes before switching.
+- `-c trafficLogging=false` turns off the traffic.dliu.com integration.
+
+The DynamoDB table and the content bucket are **retained** when the stack is deleted, so posts and files survive a teardown.
+
+## Caching
+
+- The frontend files and `content/*.json` are served with `no-cache`, so CloudFront and browsers revalidate them. A published edit appears immediately.
+- Files under `/media/` are cached for a day. A replaced file gets a new ID, so its URL changes too.
+- Publishing, editing or unpublishing a post rewrites `content/posts/<slug>.json`. It also rebuilds `content/index.json` from DynamoDB.
+
+## Old WordPress URLs
+
+The CloudFront function keeps old links working:
+
+| Old | New |
+| --- | --- |
+| `/<slug>/` | `/posts/<slug>` (301) |
+| `/2025/04/` | `/?m=202504` (301) |
+| `/page/2/` | `/?paged=2` (301) |
+| `/wp-admin`, `/wp-login.php` | `/admin` (302) |
+
+Search (`/?s=`), month archives (`/?m=`) and paging (`/?paged=`) use the same query parameters as WordPress.
+
+## Security
+
+- **Network access:** the Lambda Function URL and both buckets accept requests only from this CloudFront distribution, via OAC. Because of this, the browser signs every write request body with the `x-amz-content-sha256` header.
+- **Writes:** every write needs a signed-in session cookie and an `Origin` header equal to the site URL.
+- **Sign-in session:** the session is a signed, HTTP-only `__Host-` cookie.
+- **Rendering:** Markdown is rendered on the client with a strict allow-list. Raw HTML and `javascript:` URLs are dropped.
+- **Headers:** CloudFront sends a strict Content-Security-Policy and HSTS.
+- **Uploads:** files go directly to S3 through short-lived presigned URLs into a `pending/` prefix. They are moved into `media/` only when the post is saved. Abandoned uploads expire after a day.
+
+## Traffic monitoring
+
+The site sends CloudFront logs to the shared traffic monitor (https://traffic.dliu.com). That repository lists it as `blog` in its `config/sites.json`.
+
+## Legacy WordPress
+
+The previous site was a WordPress Docker image on ECS with an EFS volume. Its configuration is kept under `archive/wordpress/` for reference. The old AWS resources can be removed once you no longer need them:
+
+- the ECS service or task
+- the `BlogStorage` EFS stack
+- the Docker image and its Jenkins jobs
+
+The old posts and images were not migrated automatically.
