@@ -49,7 +49,7 @@ Every post gets an ID of the form `yyyymmddNN`: the UTC date it was created plus
    - Each file can be up to 100 MB, with up to 100 files per post.
 4. Click **Save draft** (or press Ctrl/⌘+S) to keep the post private, or **Publish** to make it public. On a published post, **Update** saves changes and **Unpublish (back to draft)** hides it again. **Delete post** removes the post and its files.
 
-While you are signed in, the header shows **Edit** (on a post page), **Posts** (all posts and drafts), **＋ New post** and **Sign out**.
+Every page has a **Docs** button in the header. While you are signed in, the header also shows **Edit** (on a post page), **Posts** (all posts and drafts), **＋ New post** and **Sign out**; on narrow phones the Docs button then moves to the footer link to save room.
 
 Images, PDFs, plain text, audio and video open in the browser. Other file types are always downloaded rather than displayed.
 

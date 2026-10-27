@@ -31,7 +31,7 @@ header.top {
   border-bottom: 1px solid var(--line); background: rgba(255, 255, 255, 0.92);
   position: sticky; top: 0; z-index: 10; backdrop-filter: blur(8px);
 }
-.brand { font-weight: 700; font-size: 18px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+.brand { font-weight: 700; font-size: 18px; color: var(--text); display: flex; align-items: center; gap: 8px; flex: none; white-space: nowrap; }
 .brand:hover { text-decoration: none; }
 .brand .logo { width: 26px; height: 26px; flex: none; }
 header.top nav { margin-left: auto; display: flex; gap: 8px; align-items: center; }
@@ -61,6 +61,9 @@ button, .button {
 button:hover, .button:hover { border-color: #b8c0ca; background: var(--panel); text-decoration: none; }
 button.primary, .button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 button.primary:hover, .button.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.button.docs-link { display: inline-flex; align-items: center; gap: 6px; }
+.button.docs-link .icon { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.button.docs-link[aria-current="page"] { border-color: var(--accent); color: var(--accent); }
 .button.sign-in { padding: 9px 18px; font-weight: 600; box-shadow: 0 1px 3px rgba(37, 99, 235, 0.35); }
 button.danger, .button.danger { color: var(--danger); }
 button.small, .button.small { font-size: 13px; padding: 5px 10px; }
@@ -176,10 +179,15 @@ textarea { resize: vertical; }
   .posts li { flex-direction: column; gap: 2px; }
   .posts.admin li { flex-direction: row; }
   #body, .editor .preview { min-height: 320px; }
+  header.top nav { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+  header.top nav .button { padding: 8px 10px; }
+  header.top nav .hide-narrow { display: none; }
+}
+@media (max-width: 480px) {
+  .brand .name { display: none; }
 }
 @media (max-width: 400px) {
-  .brand .name { display: none; }
-  header.top nav .button { padding: 8px 11px; }
+  header.top nav .button { padding: 8px 9px; }
 }
 /* Touch screens: bigger targets, and 16px text so iOS doesn't zoom into fields */
 @media (pointer: coarse) {

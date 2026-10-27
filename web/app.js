@@ -90,13 +90,39 @@
     }
   }
 
-  // Header buttons: a clear Sign in for readers; New post, Posts and Sign out for the author.
+  // Signed in, the header is crowded on phones, so the button is left out there (the footer links to Docs too).
+  function docsButton(signedIn = false) {
+    const ns = 'http://www.w3.org/2000/svg';
+    const svg = document.createElementNS(ns, 'svg');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.setAttribute('class', 'icon');
+    for (const d of ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5', 'M9 13h6M9 17h6']) {
+      const path = document.createElementNS(ns, 'path');
+      path.setAttribute('d', d);
+      svg.append(path);
+    }
+    const label = document.createElement('span');
+    label.className = 'label';
+    label.textContent = 'Docs';
+    const a = document.createElement('a');
+    a.className = signedIn ? 'button docs-link hide-narrow' : 'button docs-link';
+    a.href = '/docs';
+    a.title = 'How this blog works';
+    a.setAttribute('aria-label', 'Docs');
+    a.append(svg, label);
+    if (location.pathname.replace(/\/$/, '') === '/docs') a.setAttribute('aria-current', 'page');
+    return a;
+  }
+
+  // Header buttons: Docs for everyone; a clear Sign in for readers; New post, Posts and Sign out for the author.
   function renderNav(me, { editId } = {}) {
     if (!me.signedIn) {
-      nav.replaceChildren(el('a', { class: 'button primary sign-in', href: signInUrl(), text: 'Sign in' }));
+      nav.replaceChildren(docsButton(), el('a', { class: 'button primary sign-in', href: signInUrl(), text: 'Sign in' }));
       return;
     }
     nav.replaceChildren(...[
+      docsButton(true),
       editId ? el('a', { class: 'button', href: `/admin/posts/${editId}`, text: 'Edit' }) : null,
       el('a', { class: 'button', href: '/admin', text: 'Posts' }),
       el('a', { class: 'button primary', href: '/admin/new', text: '＋ New post' }),
