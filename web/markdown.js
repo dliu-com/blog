@@ -227,6 +227,17 @@
 
   const parse = (source) => parseBlocks(source);
 
+  // An http(s) link to another host; these open in a new tab. Links to this site stay in the same tab.
+  function isExternal(href, doc) {
+    if (!/^https?:\/\//i.test(href)) return false;
+    const here = doc.location && doc.location.host;
+    try {
+      return !here || new URL(href).host.toLowerCase() !== here.toLowerCase();
+    } catch {
+      return true;
+    }
+  }
+
   function renderInline(nodes, doc) {
     const fragment = doc.createDocumentFragment();
     for (const node of nodes) {
@@ -242,7 +253,10 @@
           el = doc.createElement('a');
           el.setAttribute('href', node.href);
           if (node.title) el.setAttribute('title', node.title);
-          if (/^https?:/i.test(node.href)) el.setAttribute('rel', 'noopener noreferrer nofollow');
+          if (isExternal(node.href, doc)) {
+            el.setAttribute('target', '_blank');
+            el.setAttribute('rel', 'noopener noreferrer nofollow');
+          }
           el.append(renderInline(node.children, doc));
           break;
         case 'image':

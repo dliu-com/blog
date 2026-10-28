@@ -42,7 +42,13 @@ test('HTML in posts is shown as text, never interpreted', () => {
 
 test('pictures and links', () => {
   expect(render('![Cliffs](/media/a/b/c.jpg)')).toContain('<img src="/media/a/b/c.jpg" alt="Cliffs" loading="lazy">');
-  expect(render('[site](https://dliu.com)')).toContain('<a href="https://dliu.com" rel="noopener noreferrer nofollow">site</a>');
+  expect(render('[site](https://dliu.com)')).toContain('<a href="https://dliu.com" target="_blank" rel="noopener noreferrer nofollow">site</a>');
+  expect(render('[post](/2026102801)')).toContain('<a href="/2026102801">post</a>');
+  expect(render('[mail](mailto:user@example.com)')).toContain('<a href="mailto:user@example.com">mail</a>');
+  const here = { ...doc, location: { host: 'blog.dliu.com' } };
+  const html = (source) => md.render(source, here).html();
+  expect(html('[same](https://blog.dliu.com/2026102801)')).toContain('<a href="https://blog.dliu.com/2026102801">same</a>');
+  expect(html('[other](https://dliu.com)')).toContain('target="_blank"');
   expect(render('[x](javascript:alert(1))')).not.toContain('href');
   expect(render('![x](javascript:alert(1))')).not.toContain('<img');
 });
