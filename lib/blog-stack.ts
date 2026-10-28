@@ -249,6 +249,7 @@ export class BlogStack extends Stack {
     if (trafficLogging) {
       // TrafficMonitor delivers this distribution's access logs (CloudFront standard logging v2).
       // IncludeCookies is the only legacy logging setting v2 honours: it puts the dl_vid cookie in the logs.
+      // CloudFront logs the whole Cookie header; the traffic monitor's partitioner keeps only dl_vid.
       (distribution.node.defaultChild as cloudfront.CfnDistribution)
         .addPropertyOverride('DistributionConfig.Logging', { IncludeCookies: true });
     }

@@ -298,7 +298,7 @@ function security(root) {
     ['Someone guesses a token or forges one', LOW, '256-bit secret; only its hash is stored; constant-time comparison; a wrong token gets 401 and never falls back to the cookie'],
     ['A client sends its own x-blog-token header to bypass checks', LOW, 'The viewer function deletes it unless it came from Authorization: Bearer, and the value must still match a stored hash'],
     ['A malicious site makes the author’s browser change posts (CSRF)', LOW, 'Origin check and SameSite=Lax cookie; token requests can’t be forged cross-site because browsers never add the token header for another site'],
-    ['The session cookie is read from the traffic logs', MEDIUM, 'CloudFront access logs include the whole Cookie header (for the visitor ID), so the 30-day session cookie is kept for up to a year in the private log bucket and is searchable in Athena. Only someone with access to the AWS account can read it, and that person can already change the blog; signing in again does not end the old session'],
+    ['The session cookie is read from the traffic logs', LOW, 'CloudFront logs the whole Cookie header (for the visitor ID). The traffic monitor keeps only the visitor ID before filing each log, and on 28 October 2026 it removed the session cookies from the logs it had already kept; sessions from before then were ended. The unprocessed file lasts seconds in a private bucket'],
     ['A stolen or forged session cookie', LOW, 'HMAC-signed with a key from Parameter Store, compared in constant time; HttpOnly, Secure, __Host- prefix; expires in 30 days; rotating the client secret signs everyone out'],
     ['Someone who has read the public source replays the sign-in cookie that /auth/login gives anyone as a session cookie', LOW, 'Fixed on 28 October 2026 after a penetration test. Sign-in and session cookies are now signed with different keys and carry a type that is checked; a session must name a user. Every session from before the fix was ended. Tests replay the sign-in cookie and other forged payloads'],
     ['Sign-in is tampered with: forged callback, stolen code or open redirect', LOW, 'state, nonce and PKCE; ID token signature, issuer, tenant and audience checked; return paths must be on this site'],
@@ -315,7 +315,6 @@ function security(root) {
   root.append(list([
     'No WAF or per-client rate limit; reserved Lambda concurrency is the backstop.',
     'Sessions cannot be revoked one by one; rotating the client secret ends all of them.',
-    'Session cookies are kept in the CloudFront access logs for up to a year.',
     'API tokens are not tied to the Microsoft account: signing out or rotating the client secret does not revoke them. Revoke them on /admin/tokens.',
     'A token can be set to never expire; prefer 90 days or less.',
     'A token holder can read every draft and publish; there is no read-only or draft-only token.',
