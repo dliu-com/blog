@@ -17,7 +17,7 @@ function setup() {
   const files = createMemoryFiles();
   let clock = NOW;
   const handler = createHandler({ store, files, loadConfig: async () => config, now: () => clock });
-  const session = auth.sign({ user: 'user@example.com', name: 'Dewei', exp: NOW / 1000 + 86400 }, auth.sessionKey(config));
+  const session = auth.issueSession({ user: 'user@example.com', name: 'Dewei' }, config, NOW);
 
   function call(method, path, { body, signedIn = true, origin = SITE_URL, contentType = 'application/json', token, headers: extra = {} } = {}) {
     const headers = { ...extra };
@@ -63,6 +63,38 @@ describe('/api/me', () => {
     const handler = createHandler({ store: createMemoryStore(), files: createMemoryFiles(), loadConfig: async () => { throw new NotConfigured('missing'); } });
     const res = await handler({ rawPath: '/api/me', requestContext: { http: { method: 'GET' } } });
     expect(JSON.parse(res.body)).toEqual({ signedIn: false, configured: false });
+  });
+});
+
+describe('session forgery', () => {
+  function withCookie(handler, value, method = 'GET', path = '/api/tokens') {
+    return handler({
+      rawPath: path,
+      headers: { origin: SITE_URL, 'content-type': 'application/json' },
+      cookies: [`${auth.SESSION_COOKIE}=${value}`],
+      requestContext: { http: { method } },
+      body: method === 'GET' ? undefined : '{"name":"x","expiresInDays":0}',
+    });
+  }
+  const handler = () => createHandler({ store: createMemoryStore(), files: createMemoryFiles(), loadConfig: async () => config, now: () => NOW });
+
+  test('the login cookie from /auth/login is not accepted as a session', async () => {
+    const login = auth.startLogin(config, SITE_URL, NOW, '/admin');
+    const value = login.cookies[0].split(';')[0].split('=').slice(1).join('=');
+    const h = handler();
+    expect((await withCookie(h, value)).statusCode).toBe(401);
+    expect((await withCookie(h, value, 'POST')).statusCode).toBe(401);
+    expect(JSON.parse((await withCookie(h, value, 'GET', '/api/me')).body)).toEqual({ signedIn: false });
+  });
+
+  test('signed payloads without the session type or a user are rejected', async () => {
+    const exp = NOW / 1000 + 3600;
+    const h = handler();
+    for (const payload of [{ user: 'user@example.com', exp }, { typ: 'session', exp }, { typ: 'session', user: '', exp }, { typ: 'login', user: 'user@example.com', exp }]) {
+      expect((await withCookie(h, auth.sign(payload, auth.sessionKey(config)))).statusCode).toBe(401);
+    }
+    expect((await withCookie(h, auth.sign({ typ: 'session', user: 'user@example.com', exp }, auth.loginKey(config)))).statusCode).toBe(401);
+    expect((await withCookie(h, auth.issueSession({ user: 'user@example.com' }, config, NOW))).statusCode).toBe(200);
   });
 });
 
@@ -409,7 +441,7 @@ describe('API tokens', () => {
     const store = createMemoryStore();
     const files = createMemoryFiles();
     const owner = createHandler({ store, files, loadConfig: async () => config, now: () => NOW });
-    const session = auth.sign({ user: 'user@example.com', name: 'Dewei', exp: NOW / 1000 + 86400 }, auth.sessionKey(config));
+    const session = auth.issueSession({ user: 'user@example.com', name: 'Dewei' }, config, NOW);
     const made = await owner({
       rawPath: '/api/tokens', headers: { origin: SITE_URL, 'content-type': 'application/json' }, cookies: [`${auth.SESSION_COOKIE}=${session}`],
       requestContext: { http: { method: 'POST' } }, body: JSON.stringify({ name: 'Agent' }),

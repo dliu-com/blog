@@ -289,7 +289,7 @@ function security(root) {
   root.append(callout('shield', 'The text of drafts and unpublished posts exists only in DynamoDB, which readers cannot reach; publishing is the only step that copies it to the public bucket. Files attached to a draft are already under /media, at addresses with a random 16-character ID that are not listed anywhere until the post is published.'));
 
   add('h2', 'Threat model');
-  add('p', 'What could go wrong, what stops it, and how much risk is left. The biggest risks come from API tokens: whoever holds one can publish as the author.');
+  add('p', 'What could go wrong, what stops it, and how much risk is left. It assumes the attacker has read the source code, which is public on GitHub. The biggest risks come from API tokens: whoever holds one can publish as the author.');
   root.append(table(['Scenario', 'Residual risk', 'Controls'], [
     ['A token leaks from the agent’s computer, chat history or a script', MEDIUM, 'Shown once; kept in a mode-600 file and never in the agent’s instructions or output; expires; revoke on /admin/tokens; last use shown; cannot delete posts or create tokens. Until revoked, the holder can read drafts and publish'],
     ['A prompt-injected or confused agent publishes unwanted text or overwrites the author’s edits', MEDIUM, 'Agents are told to save drafts unless asked to publish and to read a post before editing it; tokens cannot delete; updatedVia and logs show which token changed what; point-in-time recovery restores the table. Edits have no version check, so the last save wins'],
@@ -298,14 +298,16 @@ function security(root) {
     ['Someone guesses a token or forges one', LOW, '256-bit secret; only its hash is stored; constant-time comparison; a wrong token gets 401 and never falls back to the cookie'],
     ['A client sends its own x-blog-token header to bypass checks', LOW, 'The viewer function deletes it unless it came from Authorization: Bearer, and the value must still match a stored hash'],
     ['A malicious site makes the author’s browser change posts (CSRF)', LOW, 'Origin check and SameSite=Lax cookie; token requests can’t be forged cross-site because browsers never add the token header for another site'],
+    ['The session cookie is read from the traffic logs', MEDIUM, 'CloudFront access logs include the whole Cookie header (for the visitor ID), so the 30-day session cookie is kept for up to a year in the private log bucket and is searchable in Athena. Only someone with access to the AWS account can read it, and that person can already change the blog; signing in again does not end the old session'],
     ['A stolen or forged session cookie', LOW, 'HMAC-signed with a key from Parameter Store, compared in constant time; HttpOnly, Secure, __Host- prefix; expires in 30 days; rotating the client secret signs everyone out'],
-    ['The session cookie is read from the traffic logs', LOW, 'CloudFront access logs include cookies (for the visitor ID) and keep them up to a year in the private log bucket. Only someone with access to the AWS account can read them, and that person can already change the blog'],
+    ['Someone who has read the public source replays the sign-in cookie that /auth/login gives anyone as a session cookie', LOW, 'Fixed on 28 October 2026 after a penetration test. Sign-in and session cookies are now signed with different keys and carry a type that is checked; a session must name a user. Every session from before the fix was ended. Tests replay the sign-in cookie and other forged payloads'],
     ['Sign-in is tampered with: forged callback, stolen code or open redirect', LOW, 'state, nonce and PKCE; ID token signature, issuer, tenant and audience checked; return paths must be on this site'],
     ['A post or upload runs script in readers’ browsers (stored XSS)', LOW, 'Markdown rendered with DOM methods and no raw HTML; safe link schemes only; CSP allows scripts from the site only; HTML and SVG uploads download instead of opening'],
+    ['An agent puts a picture from another site in a post to track readers', LOW, 'Pictures may come from any https address, so that site sees readers’ IP addresses; review agent posts before publishing'],
     ['The tokens page is framed to trick the author into clicking (clickjacking)', LOW, 'X-Frame-Options DENY and CSP frame-ancestors none'],
     ['Someone calls the Lambda URL or the buckets directly', LOW, 'Origin access control: they accept only requests signed by this CloudFront distribution'],
     ['A flood of API requests runs up the bill', LOW, 'Reserved concurrency of 10; a wrong token costs one DynamoDB read; readers never call the API'],
-    ['Secrets leak through the source code', LOW, 'The Microsoft client secret is a SecureString in Parameter Store; tokens exist only on the agent’s computer and as hashes'],
+    ['Secrets leak through the source code', LOW, 'The source is public, so security does not rely on hiding it. The Microsoft client secret is a SecureString in Parameter Store; tokens exist only on the agent’s computer and as hashes'],
     ['A draft is seen before publishing', LOW, 'Draft text stays in DynamoDB; draft files are at random, unlisted URLs'],
   ]));
 
@@ -313,6 +315,7 @@ function security(root) {
   root.append(list([
     'No WAF or per-client rate limit; reserved Lambda concurrency is the backstop.',
     'Sessions cannot be revoked one by one; rotating the client secret ends all of them.',
+    'Session cookies are kept in the CloudFront access logs for up to a year.',
     'API tokens are not tied to the Microsoft account: signing out or rotating the client secret does not revoke them. Revoke them on /admin/tokens.',
     'A token can be set to never expire; prefer 90 days or less.',
     'A token holder can read every draft and publish; there is no read-only or draft-only token.',

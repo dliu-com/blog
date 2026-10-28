@@ -28,7 +28,7 @@ const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '
 const LOCAL_SESSION = 'blog_dev_session';
 
 function sessionCookie() {
-  const value = auth.sign({ user: 'dev@example.com', name: 'Dewei Liu', exp: Math.floor(Date.now() / 1000) + 86400 }, auth.sessionKey(config));
+  const value = auth.issueSession({ user: 'dev@example.com', name: 'Dewei Liu' }, config);
   return `${LOCAL_SESSION}=${value}; Path=/; HttpOnly; SameSite=Lax`;
 }
 

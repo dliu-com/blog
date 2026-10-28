@@ -128,7 +128,7 @@ function createHandler(deps = {}) {
   }
 
   async function tokensApi(method, parts, event, user) {
-    if (!user) throw new HttpError(401, 'Sign in to do that');
+    if (!user || typeof user.user !== 'string' || !user.user) throw new HttpError(401, 'Sign in to do that');
     if (user.via === 'token') throw new HttpError(403, 'API tokens cannot manage API tokens');
     if (method !== 'GET') requireSameOrigin(event, user);
     const [, tokenId] = parts;
@@ -183,7 +183,7 @@ function createHandler(deps = {}) {
 
     // Everything under /api/posts is for authors; readers get the static JSON.
     const user = await authenticate(event, method, path);
-    if (!user) throw new HttpError(401, 'Sign in to do that');
+    if (!user || typeof user.user !== 'string' || !user.user) throw new HttpError(401, 'Sign in to do that');
     if (method !== 'GET') requireSameOrigin(event, user);
 
     if (parts.length === 1) {

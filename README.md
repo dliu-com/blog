@@ -153,7 +153,7 @@ The DynamoDB table and the content bucket are **retained** when the stack is del
 - **Network access:** the Lambda Function URL and both buckets accept requests only from this CloudFront distribution, via OAC. Because of this, the browser signs every write request body with the `x-amz-content-sha256` header.
 - **Writes:** every write needs either a signed-in session cookie and an `Origin` header equal to the site URL, or a valid API token. Tokens are 256-bit secrets stored only as hashes, expire, can be revoked, and can't delete posts or manage tokens.
 - **Threat model:** see the Security tab at `/docs#security`.
-- **Sign-in session:** the session is a signed, HTTP-only `__Host-` cookie.
+- **Sign-in session:** the session is a signed, HTTP-only `__Host-` cookie. The short-lived sign-in cookie is signed with a different key and carries a different `typ`, so it can't be replayed as a session.
 - **Rendering:** Markdown is rendered on the client with a strict allow-list. Raw HTML and `javascript:` URLs are dropped.
 - **Headers:** CloudFront sends a strict Content-Security-Policy and HSTS.
 - **Uploads:** files go directly to S3 through short-lived presigned URLs into a `pending/` prefix. They are moved into `media/` only when the post is saved. Abandoned uploads expire after a day.
