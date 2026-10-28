@@ -23,7 +23,7 @@ const files = createMemoryFiles();
 const handler = createHandler({ store, files, loadConfig: async () => config });
 const viewerRequest = vm.runInNewContext(`${fs.readFileSync(path.join(__dirname, '..', 'functions', 'viewer-request.js'), 'utf8')}\nhandler`);
 const WEB = path.join(__dirname, '..', 'web');
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.png': 'image/png', '.svg': 'image/svg+xml', '.md': 'text/markdown; charset=utf-8' };
 // Local cookies can't use the __Host- prefix over plain http, so rename them on the way in and out.
 const LOCAL_SESSION = 'blog_dev_session';
 

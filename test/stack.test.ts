@@ -18,6 +18,17 @@ test('posts table is keyed by post id, with no index, and is protected', () => {
   template.hasResource('AWS::DynamoDB::GlobalTable', { DeletionPolicy: 'Retain' });
 });
 
+test('API tokens have their own table, with expiry by TTL', () => {
+  template.resourceCountIs('AWS::DynamoDB::GlobalTable', 2);
+  template.hasResourceProperties('AWS::DynamoDB::GlobalTable', {
+    KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
+    TimeToLiveSpecification: { AttributeName: 'ttl', Enabled: true },
+  });
+  template.hasResourceProperties('AWS::Lambda::Function', {
+    Environment: { Variables: Match.objectLike({ TOKENS_TABLE: Match.anyValue() }) },
+  });
+});
+
 test('nothing runs without traffic: one on-demand function, no servers', () => {
   template.resourceCountIs('AWS::EC2::Instance', 0);
   template.resourceCountIs('AWS::ECS::Service', 0);
@@ -62,6 +73,10 @@ test('CloudFront routes the API, published content and media', () => {
   expect(config.Logging).toEqual({ IncludeCookies: true });
   expect(config.DefaultCacheBehavior.FunctionAssociations.map((f: any) => f.EventType)).toEqual(['viewer-request', 'viewer-response']);
   expect(config.Origins).toHaveLength(3);
+  // The viewer function copies Authorization: Bearer to x-blog-token before CloudFront signs for Lambda.
+  const api = config.CacheBehaviors.find((b: any) => b.PathPattern === 'api/*');
+  expect(api.FunctionAssociations.map((f: any) => f.EventType)).toEqual(['viewer-request']);
+  expect(api.FunctionAssociations[0].FunctionARN).toEqual(config.DefaultCacheBehavior.FunctionAssociations[0].FunctionARN);
   template.hasResourceProperties('AWS::CloudFront::Function', {
     FunctionConfig: Match.objectLike({ Runtime: 'cloudfront-js-2.0' }),
     FunctionCode: Match.stringLikeRegexp('/wp-admin'),

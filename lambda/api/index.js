@@ -4,6 +4,7 @@ const auth = require('./auth');
 const { loadConfig, NotConfigured } = require('./config');
 const { createFiles, mediaKey, mediaUrl, servedType } = require('./s3');
 const { createStore, Exists, NotFound, TooLarge } = require('./store');
+const tokens = require('./tokens');
 const {
   BadRequest, FILE_ID, MAX_FILES, MAX_POSTS_PER_DAY, POST_ID, buildIndex, compareSummaries, derive, newFileId, nextPostNumber, postIdFor, postIdPrefix,
   parsePostUpdate, parseUpload, toApiPost, toPublicPost, toSummary,
@@ -73,8 +74,31 @@ function createHandler(deps = {}) {
   const isoNow = () => new Date(clock()).toISOString();
 
   // Cookies are SameSite=Lax; also insist that writes come from our own pages.
-  function requireSameOrigin(event) {
+  // Token requests skip this: browsers can't add the token header to a cross-site request without CORS, which we never allow.
+  function requireSameOrigin(event, user) {
+    if (user && user.via === 'token') return;
     if (header(event, 'origin') !== process.env.SITE_URL) throw new HttpError(403, 'Cross-site request refused');
+  }
+
+  // CloudFront replaces Authorization when it signs the request for Lambda, so the viewer function copies
+  // "Authorization: Bearer <token>" to x-blog-token. The dev server and tests send Authorization as is.
+  function tokenFrom(event) {
+    const copied = header(event, 'x-blog-token');
+    if (copied) return copied;
+    const match = /^Bearer\s+(\S+)\s*$/i.exec(header(event, 'authorization') || '');
+    return match ? match[1] : '';
+  }
+
+  // Who is calling: an API token if one was sent (a bad token is an error, never a fallback), else the session cookie.
+  async function authenticate(event, method, path) {
+    const token = tokenFrom(event);
+    if (token) {
+      const item = await tokens.verifyToken(store, token, clock());
+      if (!item) throw new HttpError(401, 'Invalid, expired or revoked API token');
+      console.log(JSON.stringify({ message: 'API token used', tokenId: item.id, tokenName: item.name, method, path }));
+      return { user: item.createdBy, name: item.createdByName, via: 'token', tokenId: item.id, tokenName: item.name, expiresAt: item.expiresAt || '' };
+    }
+    return auth.getSession(event, await getConfig(), clock());
   }
 
   async function getPost(id) {
@@ -95,22 +119,62 @@ function createHandler(deps = {}) {
   async function save(before, post, user, { create = false } = {}) {
     post.updatedAt = isoNow();
     post.updatedBy = user.user;
+    if (user.via === 'token') post.updatedVia = `API token "${user.tokenName}" (${user.tokenId})`;
+    else delete post.updatedVia;
     derive(post);
     await store.putPost(post, { create });
     await syncPublic(before, post);
     return post;
   }
 
+  async function tokensApi(method, parts, event, user) {
+    if (!user) throw new HttpError(401, 'Sign in to do that');
+    if (user.via === 'token') throw new HttpError(403, 'API tokens cannot manage API tokens');
+    if (method !== 'GET') requireSameOrigin(event, user);
+    const [, tokenId] = parts;
+    if (parts.length === 1 && method === 'GET') {
+      const items = (await store.listTokens()).filter((item) => !tokens.isExpired(item, clock()));
+      return json(200, { tokens: items.map(tokens.toApiToken).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
+    }
+    if (parts.length === 1 && method === 'POST') {
+      let request;
+      try {
+        request = tokens.parseTokenRequest(readBody(event));
+      } catch (error) {
+        if (error instanceof tokens.TokenInputError) throw new BadRequest(error.message);
+        throw error;
+      }
+      const live = (await store.listTokens()).filter((item) => !tokens.isExpired(item, clock()));
+      if (live.length >= tokens.MAX_TOKENS) throw new HttpError(409, `At most ${tokens.MAX_TOKENS} API tokens; revoke one first`);
+      const { item, token } = tokens.newToken(request, user, clock());
+      await store.putToken(item);
+      console.log(JSON.stringify({ message: 'API token created', tokenId: item.id, tokenName: item.name, by: user.user }));
+      return json(201, { ...tokens.toApiToken(item), token });
+    }
+    if (parts.length === 2 && method === 'DELETE') {
+      if (!tokens.TOKEN_ID.test(tokenId) || !(await store.deleteToken(tokenId))) throw new NotFound('Token not found');
+      console.log(JSON.stringify({ message: 'API token revoked', tokenId, by: user.user }));
+      return json(200, { revoked: tokenId });
+    }
+    if (parts.length > 2) throw new NotFound('Not found');
+    throw new HttpError(405, 'Method not allowed');
+  }
+
   async function api(method, parts, event) {
+    const path = `/api/${parts.join('/')}`;
     if (parts.length === 1 && parts[0] === 'me' && method === 'GET') {
       try {
-        const session = auth.getSession(event, await getConfig(), clock());
-        return json(200, session ? { signedIn: true, user: session.user, name: session.name } : { signedIn: false });
+        const session = await authenticate(event, method, path);
+        if (!session) return json(200, { signedIn: false });
+        const me = { signedIn: true, user: session.user, name: session.name };
+        if (session.via === 'token') me.token = { id: session.tokenId, name: session.tokenName, expiresAt: session.expiresAt };
+        return json(200, me);
       } catch (error) {
         if (error instanceof NotConfigured) return json(200, { signedIn: false, configured: false });
         throw error;
       }
     }
+    if (parts[0] === 'tokens') return tokensApi(method, parts, event, await authenticate(event, method, path));
     if (parts[0] !== 'posts') throw new NotFound('Not found');
     const [, postId, sub, fileId] = parts;
     if (postId !== undefined && !POST_ID.test(postId)) throw new NotFound('Post not found');
@@ -118,9 +182,9 @@ function createHandler(deps = {}) {
     if (fileId !== undefined && !FILE_ID.test(fileId)) throw new NotFound('File not found');
 
     // Everything under /api/posts is for authors; readers get the static JSON.
-    const user = auth.getSession(event, await getConfig(), clock());
+    const user = await authenticate(event, method, path);
     if (!user) throw new HttpError(401, 'Sign in to do that');
-    if (method !== 'GET') requireSameOrigin(event);
+    if (method !== 'GET') requireSameOrigin(event, user);
 
     if (parts.length === 1) {
       if (method === 'GET') return json(200, { posts: (await store.listPosts()).map(toSummary).sort(compareSummaries) });
@@ -131,12 +195,13 @@ function createHandler(deps = {}) {
           id: '',
           title: fields.title || '',
           body: fields.body || '',
-          status: 'draft',
+          status: fields.status || 'draft',
           files: {},
           author: user.user,
           authorName: user.name || user.user,
           createdAt: now,
         };
+        if (post.status === 'published') post.publishedAt = now;
         // Ids are yyyymmddNN; the conditional write makes two posts created at once take different numbers.
         const prefix = postIdPrefix(clock());
         let n = nextPostNumber((await store.listPosts()).map((item) => item.id), prefix);
@@ -165,6 +230,7 @@ function createHandler(deps = {}) {
         return json(200, toApiPost(await save(before, post, user)));
       }
       if (method === 'DELETE') {
+        if (user.via === 'token') throw new HttpError(403, 'API tokens cannot delete posts. Unpublish it instead (status "draft"); the owner can delete it in the browser.');
         const before = await getPost(postId);
         await store.deletePost(postId);
         await files.removePost(postId);

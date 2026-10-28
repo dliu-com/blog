@@ -62,6 +62,13 @@ export class BlogStack extends Stack {
       deletionProtection: true,
       removalPolicy: RemovalPolicy.RETAIN,
     });
+    // API tokens for agents (hash of the secret only). Expired tokens are removed by TTL.
+    const tokensTable = new dynamodb.TableV2(this, 'Tokens', {
+      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
+      billing: dynamodb.Billing.onDemand(),
+      timeToLiveAttribute: 'ttl',
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
 
     // Published JSON (content/), post media (media/) and uploads in progress (pending/).
     // Private: readers get content/ and media/ through CloudFront; authors upload with presigned URLs.
@@ -97,6 +104,7 @@ export class BlogStack extends Stack {
         SITE_URL: siteUrl,
         ROOT_DOMAIN: rootDomain,
         TABLE_NAME: table.tableName,
+        TOKENS_TABLE: tokensTable.tableName,
         CONTENT_BUCKET: contentBucket.bucketName,
         PARAMETER_PREFIX,
       },
@@ -106,6 +114,7 @@ export class BlogStack extends Stack {
       }),
     });
     table.grantReadWriteData(apiHandler);
+    tokensTable.grantReadWriteData(apiHandler);
     contentBucket.grantReadWrite(apiHandler);
     contentBucket.grantDelete(apiHandler);
     apiHandler.addToRolePolicy(new iam.PolicyStatement({
@@ -190,6 +199,8 @@ export class BlogStack extends Stack {
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
       originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
       responseHeadersPolicy: headers,
+      // Copies "Authorization: Bearer" to x-blog-token, because CloudFront replaces Authorization when it signs for Lambda.
+      functionAssociations: [{ eventType: cloudfront.FunctionEventType.VIEWER_REQUEST, function: viewerRequest }],
     };
 
     // Honours the object's Cache-Control: post JSON is no-cache (revalidated, so edits show at once),

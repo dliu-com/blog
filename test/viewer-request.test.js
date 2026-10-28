@@ -6,7 +6,7 @@ const vm = require('vm');
 
 const context = {};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../functions/viewer-request.js'), 'utf8'), context);
-const run = (uri) => context.handler({ request: { uri, headers: {}, querystring: {} } });
+const run = (uri, headers = {}) => context.handler({ request: { uri, headers, querystring: {} } });
 
 test('app pages are served by index.html', () => {
   for (const uri of ['/2026102701', '/2026102700/', '/admin', '/admin/', '/admin/new', '/admin/posts/2026102700']) {
@@ -18,6 +18,21 @@ test('/docs is served by docs.html', () => {
   expect(run('/docs').uri).toBe('/docs.html');
   expect(run('/docs/').uri).toBe('/docs.html');
   expect(run('/docs.js').uri).toBe('/docs.js');
+});
+
+test('/docs/api is the API guide; /docs/api.md is served as a file', () => {
+  expect(run('/docs/api').uri).toBe('/docs-api.html');
+  expect(run('/docs/api/').uri).toBe('/docs-api.html');
+  expect(run('/docs/api.md').uri).toBe('/docs/api.md');
+});
+
+test('API tokens are copied from Authorization to x-blog-token on /api/ only', () => {
+  const bearer = { authorization: { value: 'Bearer blog_abc_def' } };
+  expect(run('/api/posts', bearer).headers['x-blog-token']).toEqual({ value: 'blog_abc_def' });
+  expect(run('/api/posts', { authorization: { value: 'Basic xyz' } }).headers['x-blog-token']).toBeUndefined();
+  expect(run('/auth/login', { ...bearer }).headers['x-blog-token']).toBeUndefined();
+  // A client can't smuggle in its own x-blog-token without a Bearer header.
+  expect(run('/api/posts', { 'x-blog-token': { value: 'forged' } }).headers['x-blog-token']).toBeUndefined();
 });
 
 test('files, the API and stored content pass through', () => {

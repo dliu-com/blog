@@ -19,8 +19,9 @@ function setup() {
   const handler = createHandler({ store, files, loadConfig: async () => config, now: () => clock });
   const session = auth.sign({ user: 'user@example.com', name: 'Dewei', exp: NOW / 1000 + 86400 }, auth.sessionKey(config));
 
-  function call(method, path, { body, signedIn = true, origin = SITE_URL, contentType = 'application/json' } = {}) {
-    const headers = {};
+  function call(method, path, { body, signedIn = true, origin = SITE_URL, contentType = 'application/json', token, headers: extra = {} } = {}) {
+    const headers = { ...extra };
+    if (token) headers.authorization = `Bearer ${token}`;
     if (origin) headers.origin = origin;
     if (body !== undefined) headers['content-type'] = contentType;
     return handler({
@@ -290,5 +291,132 @@ describe('sign-in routes', () => {
     expect(logout.headers.location).toBe('/');
     expect(logout.cookies.join('\n')).toMatch(new RegExp(`${auth.SESSION_COOKIE}=;`));
     expect(logout.cookies.join('\n')).toMatch(/blog_signed_in=;/);
+  });
+});
+
+describe('API tokens', () => {
+  async function newToken(call, body = { name: 'Writer agent' }) {
+    const res = await call('POST', '/api/tokens', { body });
+    expect(res.statusCode).toBe(201);
+    return res.json;
+  }
+  // Agents call from outside the browser: a token, no cookie and no Origin header.
+  const asAgent = (call, token) => (method, path, options = {}) => call(method, path, { ...options, token, signedIn: false, origin: null });
+
+  test('the owner creates, lists and revokes tokens; the secret is shown once and only its hash is stored', async () => {
+    const { call, store } = setup();
+    const created = await newToken(call, { name: '  Writer   agent ', expiresInDays: 30 });
+    expect(created.token).toMatch(/^blog_[a-f0-9]{12}_[a-f0-9]{64}$/);
+    expect(created).toMatchObject({ name: 'Writer agent', createdByName: 'Dewei', expiresAt: new Date(NOW + 30 * 86400000).toISOString(), lastUsedAt: '' });
+    const stored = store.tokens.get(created.id);
+    expect(JSON.stringify(stored)).not.toContain(created.token.split('_')[2]);
+    expect(stored.ttl).toBeGreaterThan(NOW / 1000);
+
+    const list = await call('GET', '/api/tokens');
+    expect(list.json.tokens).toEqual([expect.objectContaining({ id: created.id, name: 'Writer agent' })]);
+    expect(list.json.tokens[0].token).toBeUndefined();
+    expect(list.json.tokens[0].secretHash).toBeUndefined();
+
+    expect((await call('DELETE', `/api/tokens/${created.id}`)).json).toEqual({ revoked: created.id });
+    expect((await call('GET', '/api/tokens')).json.tokens).toEqual([]);
+    expect((await call('DELETE', `/api/tokens/${created.id}`)).statusCode).toBe(404);
+  });
+
+  test('token requests are validated', async () => {
+    const { call } = setup();
+    expect((await call('POST', '/api/tokens', { body: { name: '' } })).statusCode).toBe(400);
+    expect((await call('POST', '/api/tokens', { body: { name: 'x'.repeat(61) } })).statusCode).toBe(400);
+    expect((await call('POST', '/api/tokens', { body: { name: 'a', expiresInDays: 3 } })).statusCode).toBe(400);
+    expect((await newToken(call, { name: 'Forever', expiresInDays: 0 })).expiresAt).toBe('');
+    expect((await newToken(call)).expiresAt).toBe(new Date(NOW + 90 * 86400000).toISOString());
+    expect((await call('POST', '/api/tokens', { body: { name: 'a' }, origin: 'https://evil.example' })).statusCode).toBe(403);
+    expect((await call('GET', '/api/tokens', { signedIn: false })).statusCode).toBe(401);
+  });
+
+  test('at most 20 tokens', async () => {
+    const { call } = setup();
+    for (let i = 0; i < 20; i += 1) await newToken(call, { name: `Agent ${i}` });
+    const res = await call('POST', '/api/tokens', { body: { name: 'One more' } });
+    expect(res.statusCode).toBe(409);
+  });
+
+  test('an agent with a token writes, publishes and uploads without a cookie or Origin', async () => {
+    const { call, files, store, tick } = setup();
+    const { token, id: tokenId } = await newToken(call);
+    const agent = asAgent(call, token);
+
+    expect((await agent('GET', '/api/me')).json).toEqual({
+      signedIn: true, user: 'user@example.com', name: 'Dewei', token: { id: tokenId, name: 'Writer agent', expiresAt: expect.any(String) },
+    });
+    const created = await agent('POST', '/api/posts', { body: { title: 'From the agent', body: 'Hello', status: 'published' } });
+    expect(created.statusCode).toBe(201);
+    expect(created.json).toMatchObject({ status: 'published', publishedAt: new Date(NOW).toISOString(), author: 'user@example.com', updatedVia: `API token "Writer agent" (${tokenId})` });
+    expect(JSON.parse(files.objects.get('content/index.json').body).posts.map((p) => p.id)).toEqual([created.json.id]);
+
+    tick();
+    const updated = await agent('PUT', `/api/posts/${created.json.id}`, { body: { body: 'Hello again' } });
+    expect(updated.json.body).toBe('Hello again');
+    expect((await agent('GET', '/api/posts')).json.posts).toHaveLength(1);
+
+    const start = await agent('POST', `/api/posts/${created.json.id}/files`, { body: { name: 'a.png', size: 3, type: 'image/png' } });
+    expect(start.statusCode).toBe(201);
+    files.put(start.json.uploadUrl.replace('/dev-files/', ''), 'png', 'image/png');
+    const kept = await agent('PUT', `/api/posts/${created.json.id}/files/${start.json.fileId}`, { body: { name: 'a.png' } });
+    expect(kept.statusCode).toBe(201);
+    expect(kept.json.files).toHaveLength(1);
+    expect((await agent('DELETE', `/api/posts/${created.json.id}/files/${start.json.fileId}`)).json.files).toEqual([]);
+
+    expect(store.tokens.get(tokenId).lastUsedAt).toBe(new Date(NOW).toISOString());
+    // Saving by the owner in the browser clears the token note.
+    expect((await call('PUT', `/api/posts/${created.json.id}`, { body: { title: 'Edited' } })).json.updatedVia).toBeUndefined();
+  });
+
+  test('tokens cannot delete posts or manage tokens', async () => {
+    const { call } = setup();
+    const { token } = await newToken(call);
+    const agent = asAgent(call, token);
+    const post = await createPost(call, { title: 'Keep me' });
+    const del = await agent('DELETE', `/api/posts/${post.id}`);
+    expect(del.statusCode).toBe(403);
+    expect(del.json.error).toMatch(/cannot delete/);
+    expect((await call('GET', `/api/posts/${post.id}`)).statusCode).toBe(200);
+    expect((await agent('GET', '/api/tokens')).statusCode).toBe(403);
+    expect((await agent('POST', '/api/tokens', { body: { name: 'Another' } })).statusCode).toBe(403);
+  });
+
+  test('bad, revoked and expired tokens are refused, never falling back to the cookie', async () => {
+    const { call, tick } = setup();
+    const { token } = await newToken(call, { name: 'Short', expiresInDays: 7 });
+    const wrong = token.slice(0, -1) + (token.endsWith('0') ? '1' : '0');
+    for (const bad of [wrong, 'blog_123', 'nonsense']) {
+      const res = await call('GET', '/api/posts', { token: bad });
+      expect(res.statusCode).toBe(401);
+      expect(res.json.error).toMatch(/API token/);
+    }
+    // CloudFront delivers the token in x-blog-token.
+    expect((await call('GET', '/api/posts', { signedIn: false, headers: { 'x-blog-token': token } })).statusCode).toBe(200);
+    const second = await newToken(call);
+    await call('DELETE', `/api/tokens/${second.id}`);
+    expect((await call('GET', '/api/me', { token: second.token, signedIn: false })).statusCode).toBe(401);
+
+    tick(7 * 86400000 - 1000);
+    expect((await call('GET', '/api/posts', { token, signedIn: false })).statusCode).toBe(200);
+    tick(1000);
+    expect((await call('GET', '/api/posts', { token, signedIn: false })).statusCode).toBe(401);
+  });
+
+  test('tokens work even when Microsoft sign-in is not configured', async () => {
+    const store = createMemoryStore();
+    const files = createMemoryFiles();
+    const owner = createHandler({ store, files, loadConfig: async () => config, now: () => NOW });
+    const session = auth.sign({ user: 'user@example.com', name: 'Dewei', exp: NOW / 1000 + 86400 }, auth.sessionKey(config));
+    const made = await owner({
+      rawPath: '/api/tokens', headers: { origin: SITE_URL, 'content-type': 'application/json' }, cookies: [`${auth.SESSION_COOKIE}=${session}`],
+      requestContext: { http: { method: 'POST' } }, body: JSON.stringify({ name: 'Agent' }),
+    });
+    const { token } = JSON.parse(made.body);
+    const unconfigured = createHandler({ store, files, loadConfig: async () => { throw new NotConfigured('missing'); }, now: () => NOW });
+    const res = await unconfigured({ rawPath: '/api/posts', headers: { authorization: `Bearer ${token}` }, requestContext: { http: { method: 'GET' } } });
+    expect(res.statusCode).toBe(200);
   });
 });

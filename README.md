@@ -15,10 +15,11 @@ It replaces the old WordPress container, which ran around the clock. The new blo
 flowchart LR
   R[Reader] --> CF[CloudFront<br/>blog.dliu.com]
   A[Author] --> CF
+  G[AI agent<br/>API token] --> CF
   CF -->|"/, /yyyymmddNN, /admin, /docs"| Site[(S3 site bucket<br/>index.html, docs.html, js, css)]
   CF -->|"/content/*, /media/*" OAC| Content[(S3 content bucket<br/>published JSON + files)]
   CF -->|"/api/*, /auth/*" OAC| L[Lambda Function URL<br/>authors only]
-  L --> DDB[(DynamoDB<br/>posts)]
+  L --> DDB[(DynamoDB<br/>posts, API tokens)]
   L --> Content
   L --> SSM[SSM Parameter Store<br/>Entra settings]
   A -. "presigned PUT upload" .-> Content
@@ -31,7 +32,7 @@ flowchart LR
 | Site bucket | Static frontend from `web/`. |
 | Content bucket (private) | `content/index.json` (list of published posts), `content/posts/<postId>.json` (one file per published post) and `media/<postId>/<fileId>/<name>` (uploaded files). |
 | Lambda (`lambda/api`) | Authoring API and Microsoft sign-in. Reached only through CloudFront (Function URL with IAM auth + OAC). Reserved concurrency is 10. |
-| DynamoDB | Source of truth for posts, drafts included. On-demand billing, point-in-time recovery, deletion protection. |
+| DynamoDB | `Posts` is the source of truth for posts, drafts included (on-demand, point-in-time recovery, deletion protection). `Tokens` holds API tokens as SHA-256 hashes, with TTL. |
 
 Cost at low traffic is a few cents a month for requests and storage, plus the Route 53 zone the other dliu.com apps already share. Nothing is billed per hour.
 
@@ -53,12 +54,30 @@ Every page has a **Docs** button in the header. While you are signed in, the hea
 
 Images, PDFs, plain text, audio and video open in the browser. Other file types are always downloaded rather than displayed.
 
+## API tokens for AI agents
+
+Another AI agent or script can write posts through the API, without controlling a browser:
+
+1. Signed in, open **Posts → API tokens** (`/admin/tokens`), enter a name and an expiry, and click **Generate token**.
+2. **Copy command** and run it in Terminal on the agent's computer, then **Copy token** and paste it at the prompt. Like `~/.aws/credentials`, the token is stored in `~/.dliu_credentials` (mode 600), in INI format with one section per app, so the file can hold other tokens too:
+
+   ```ini
+   [blog]
+   token = blog_0123456789ab_...
+   ```
+
+   The command keeps other sections, doesn't echo the token or put it in the shell history, and clears the macOS clipboard. Agents can be pointed at another file with `DLIU_CREDENTIALS_FILE`.
+3. **Copy instructions** and paste them into the agent. They don't contain the token; they tell the agent to read the guide at `https://blog.dliu.com/docs/api.md` (also shown at `/docs/api`) and to use its bash or Python helpers, which read the token from the file per request.
+
+A token can list, read, create, edit, publish and unpublish posts and upload files. It can't delete posts or manage tokens. Revoke tokens on the same page. The API takes the token as `Authorization: Bearer …`; the CloudFront viewer function copies it to `x-blog-token`, because origin access control replaces `Authorization`.
+
 ## Repository layout
 
 ```
 web/            frontend (vanilla JS, no build step): index.html, app.js, markdown.js, style.css,
-                docs.html, docs.js, docs.css, diagram.js (the /docs page)
-lambda/api/     authoring API: routes (index.js), posts, S3 signing, DynamoDB store, Entra auth, config
+                docs.html, docs.js, docs.css, diagram.js (the /docs page),
+                docs-api.html, docs-api.js, docs-nav.js, docs/api.md (API guide for agents)
+lambda/api/     authoring API: routes (index.js), posts, API tokens, S3 signing, DynamoDB store, Entra auth, config
 functions/      CloudFront viewer-request function (routing + old-link redirects)
 lib/, bin/      AWS CDK stack (BlogSite)
 scripts/        dev server with in-memory store, set-secrets.sh
@@ -121,7 +140,9 @@ The DynamoDB table and the content bucket are **retained** when the stack is del
 | `/` | List of posts. `/?s=word` searches titles and excerpts; `/?m=202510` shows one month. |
 | `/<postId>` | The post, e.g. `/2026102701` |
 | `/admin` | All posts and drafts (signed in) |
+| `/admin/tokens` | Create and revoke API tokens (signed in) |
 | `/docs` | Architecture, cost and security |
+| `/docs/api`, `/docs/api.md` | API guide for agents (page and Markdown) |
 | `/posts/<postId>` | `/<postId>` (301) |
 | `/2025/04/` | `/?m=202504` (301) |
 | `/<old-wordpress-slug>/`, `/page/2/` | `/` (301) |
@@ -130,7 +151,8 @@ The DynamoDB table and the content bucket are **retained** when the stack is del
 ## Security
 
 - **Network access:** the Lambda Function URL and both buckets accept requests only from this CloudFront distribution, via OAC. Because of this, the browser signs every write request body with the `x-amz-content-sha256` header.
-- **Writes:** every write needs a signed-in session cookie and an `Origin` header equal to the site URL.
+- **Writes:** every write needs either a signed-in session cookie and an `Origin` header equal to the site URL, or a valid API token. Tokens are 256-bit secrets stored only as hashes, expire, can be revoked, and can't delete posts or manage tokens.
+- **Threat model:** see the Security tab at `/docs#security`.
 - **Sign-in session:** the session is a signed, HTTP-only `__Host-` cookie.
 - **Rendering:** Markdown is rendered on the client with a strict allow-list. Raw HTML and `javascript:` URLs are dropped.
 - **Headers:** CloudFront sends a strict Content-Security-Policy and HSTS.

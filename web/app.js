@@ -246,7 +246,13 @@
 
     renderNav(me);
     page([
-      el('div', { class: 'row spread head' }, [el('h1', { text: 'All posts' }), el('span', { class: 'muted', text: `${posts.filter((p) => p.status === 'published').length} published · ${plural(posts.filter((p) => p.status !== 'published').length, 'draft')}` })]),
+      el('div', { class: 'row spread head' }, [
+        el('h1', { text: 'All posts' }),
+        el('div', { class: 'row' }, [
+          el('span', { class: 'muted', text: `${posts.filter((p) => p.status === 'published').length} published · ${plural(posts.filter((p) => p.status !== 'published').length, 'draft')}` }),
+          el('a', { class: 'button small', href: '/admin/tokens', text: 'API tokens', title: 'Let an AI agent or script post for you' }),
+        ]),
+      ]),
       notices,
       rows.length ? el('ul', { class: 'posts admin' }, rows) : el('div', { class: 'empty' }, [
         el('p', { text: 'No posts yet.' }),
@@ -254,6 +260,129 @@
       ]),
     ]);
     if (flash) notice(notices, flash);
+  }
+
+  // ---------- API tokens (for AI agents and scripts) ----------
+  const EXPIRY_CHOICES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year'], [0, 'Never']];
+
+  function copyButton(getText, label = 'Copy') {
+    const button = el('button', { type: 'button', class: 'small', text: label });
+    button.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(getText());
+        button.textContent = 'Copied';
+      } catch {
+        button.textContent = 'Select and copy';
+      }
+      setTimeout(() => { button.textContent = label; }, 2000);
+    });
+    return button;
+  }
+
+  const CREDENTIALS_FILE = '~/.dliu_credentials';
+  const SAVE_TOKEN_COMMAND = "(umask 077 && f=~/.dliu_credentials && printf 'Paste the blog token, then press Return: ' && read -rs t && echo && case \"$t\" in blog_*) ;; *) echo 'That is not a blog token' >&2; exit 1;; esac && touch \"$f\" && chmod 600 \"$f\" && T=\"$t\" awk '/^[[:space:]]*\\[/{s=($0 ~ /^[[:space:]]*\\[blog\\][[:space:]]*$/)} !s{print; last=$0} END{if (last != \"\") print \"\"; print \"[blog]\"; print \"token = \" ENVIRON[\"T\"]}' \"$f\" > \"$f.new\" && mv \"$f.new\" \"$f\" && { command -v pbcopy >/dev/null && pbcopy </dev/null; true; } && echo \"Saved to $f\")";
+
+  function agentInstructions() {
+    const site = location.origin;
+    return [
+      `You can create and update posts on my blog, ${site}, through its HTTP API.`,
+      `Before doing anything, read the API guide: ${site}/docs/api.md`,
+      `Your API token is the "token" key in the [blog] section of ${CREDENTIALS_FILE}. Use the helpers in the guide, which read it at request time.`,
+      'Never print, echo or cat the token or that file, never copy the token anywhere else and never put it in a post.',
+      'If the token is missing or the API says 401, stop and ask me for a new token. Never ask me to paste it into the chat.',
+      'Save new posts as drafts unless I ask you to publish them.',
+    ].join('\n');
+  }
+
+  function step(number, title, text) {
+    return [el('h2', { text: `${number}. ${title}` }), el('p', { class: 'muted', text })];
+  }
+
+  function newTokenPanel(created) {
+    const instructions = agentInstructions();
+    return el('section', { class: 'panel new-token', 'aria-live': 'polite' }, [
+      el('h2', { text: `Token “${created.name}” created` }),
+      el('p', { class: 'warn', text: 'It is shown only once. Anyone with it can write and publish posts as you until it expires or you revoke it.' }),
+      ...step(1, 'Run the save command', `On the computer where the agent runs, paste this into Terminal (bash or zsh). Like ~/.aws/credentials, it stores the token in ${CREDENTIALS_FILE} as "token" under [blog], readable only by your user account, and keeps any other sections. It then asks for the token without showing it.`),
+      el('div', { class: 'copy-row' }, [
+        el('input', { type: 'text', class: 'mono', readonly: true, value: SAVE_TOKEN_COMMAND, 'aria-label': 'Command to save the token', onfocus: (e) => e.target.select() }),
+        copyButton(() => SAVE_TOKEN_COMMAND, 'Copy command'),
+      ]),
+      ...step(2, 'Copy the token', 'Paste it at the command’s prompt and press Return.'),
+      el('div', { class: 'copy-row' }, [
+        el('input', { type: 'text', class: 'mono', readonly: true, value: created.token, 'aria-label': 'API token', onfocus: (e) => e.target.select() }),
+        copyButton(() => created.token, 'Copy token'),
+      ]),
+      ...step(3, 'Tell your agent', 'Paste this into the other AI agent. It does not contain the token, so it is safe to keep in the agent’s chat history.'),
+      el('textarea', { class: 'mono', rows: 7, readonly: true, value: instructions, 'aria-label': 'Instructions for your agent', onfocus: (e) => e.target.select() }),
+      el('div', { class: 'row' }, [copyButton(() => instructions, 'Copy instructions')]),
+    ]);
+  }
+
+  async function tokensPage(me, { created, flash } = {}) {
+    setTitle('API tokens');
+    const notices = el('div');
+    const { tokens } = await api('GET', '/api/tokens');
+
+    const name = el('input', { type: 'text', id: 'token-name', maxlength: 60, placeholder: 'e.g. Writing agent', autocomplete: 'off', required: true });
+    const expiry = el('select', { id: 'token-expiry' }, EXPIRY_CHOICES.map(([days, label]) => el('option', { value: String(days), text: label, selected: days === 90 })));
+    const generate = el('button', { type: 'submit', class: 'primary', text: 'Generate token' });
+    const form = el('form', { class: 'token-form' }, [
+      el('label', { for: 'token-name' }, [el('span', { text: 'Name' }), name]),
+      el('label', { for: 'token-expiry' }, [el('span', { text: 'Expires after' }), expiry]),
+      generate,
+    ]);
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      generate.disabled = true;
+      try {
+        const token = await api('POST', '/api/tokens', { name: name.value, expiresInDays: Number(expiry.value) });
+        await tokensPage(me, { created: token });
+      } catch (error) {
+        generate.disabled = false;
+        notice(notices, error.message, { error: true });
+      }
+    });
+
+    const rows = tokens.map((token) => {
+      const revoke = async () => {
+        if (!confirm(`Revoke “${token.name}”? Anything using it will stop working at once.`)) return;
+        try {
+          await api('DELETE', `/api/tokens/${token.id}`);
+          await tokensPage(me, { flash: 'Token revoked.' });
+        } catch (error) {
+          notice(notices, error.message, { error: true });
+        }
+      };
+      return el('li', {}, [
+        el('div', { class: 'info' }, [
+          el('span', { class: 'title', text: token.name }),
+          el('div', { class: 'meta' }, [
+            el('span', { text: `Created ${fmtDate(token.createdAt)}` }),
+            el('span', { text: token.lastUsedAt ? `Last used ${fmtDateTime(token.lastUsedAt)}` : 'Never used' }),
+            el('span', { text: token.expiresAt ? `Expires ${fmtDate(token.expiresAt)}` : 'Never expires' }),
+          ]),
+        ]),
+        el('div', { class: 'actions' }, [el('button', { type: 'button', class: 'small danger', text: 'Revoke', onclick: revoke })]),
+      ]);
+    });
+
+    renderNav(me);
+    page([
+      el('a', { class: 'back', href: '/admin', text: '← All posts' }),
+      el('h1', { text: 'API tokens' }),
+      el('p', { class: 'lead muted' }, [
+        'A token lets another program, such as an AI agent, write, edit and publish posts and upload files through the API, without your browser. Tokens cannot delete posts or create other tokens. ',
+        el('a', { href: '/docs/api', text: 'How the API works' }),
+      ]),
+      notices,
+      created ? newTokenPanel(created) : null,
+      el('section', { class: 'panel' }, [el('h2', { text: 'Generate a token' }), form]),
+      el('h2', { class: 'section', text: tokens.length ? `Active tokens (${tokens.length})` : 'Active tokens' }),
+      rows.length ? el('ul', { class: 'posts admin tokens' }, rows) : el('p', { class: 'muted', text: 'No tokens yet.' }),
+    ]);
+    if (flash) notice(notices, flash);
+    if (!created) name.focus();
   }
 
   async function newPost() {
@@ -574,6 +703,7 @@
     try {
       if (path === '/admin') return await postsList(me);
       if (path === '/admin/new') return await newPost();
+      if (path === '/admin/tokens') return await tokensPage(me);
       const match = /^\/admin\/posts\/(\d{10})$/.exec(path);
       if (match) return await editor(me, match[1]);
       renderNav(me);

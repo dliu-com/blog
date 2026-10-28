@@ -99,6 +99,21 @@ textarea { resize: vertical; }
 .posts.admin .meta { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; }
 .posts.admin .actions { display: flex; gap: 6px; }
 
+/* ---------- API tokens ---------- */
+.lead { margin: 4px 0 18px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; font-size: 13px !important; }
+.token-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
+.token-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
+.token-form label:first-child { flex: 1; min-width: 200px; }
+.token-form select { width: auto; }
+.new-token { border-color: var(--accent); margin-bottom: 16px; }
+.new-token h2 + .warn, .new-token .muted { margin-top: 0; }
+.new-token .warn { color: var(--danger); font-weight: 600; }
+.new-token textarea { margin-bottom: 8px; }
+.copy-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.copy-row input { flex: 1; min-width: 0; }
+h2.section { font-size: 15px; margin: 24px 0 8px; }
+
 /* ---------- Post page ---------- */
 .back { display: inline-block; margin-bottom: 12px; font-size: 14px; }
 .article h1 { font-size: 30px; line-height: 1.25; margin: 0 0 6px; overflow-wrap: anywhere; }

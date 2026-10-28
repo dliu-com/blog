@@ -1,58 +1,10 @@
 import { flow, tiers, stats, table, callout, more } from './diagram.js';
+import { renderNav } from './docs-nav.js';
 
 const TABS = ['architecture', 'cost', 'security'];
 const TITLES = { architecture: 'Technical architecture', cost: 'Cost', security: 'Security' };
 const num = (text) => ({ text, className: 'num' });
 const mono = (text) => ({ text, className: 'mono' });
-
-function link(className, href, text) {
-  const a = document.createElement('a');
-  a.className = className;
-  a.href = href;
-  a.textContent = text;
-  return a;
-}
-
-// Signed in, the header is crowded on phones, so the button is left out there (the footer links to Docs too).
-function docsButton(signedIn = false) {
-  const ns = 'http://www.w3.org/2000/svg';
-  const svg = document.createElementNS(ns, 'svg');
-  svg.setAttribute('viewBox', '0 0 24 24');
-  svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'icon');
-  for (const d of ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5', 'M9 13h6M9 17h6']) {
-    const path = document.createElementNS(ns, 'path');
-    path.setAttribute('d', d);
-    svg.append(path);
-  }
-  const label = document.createElement('span');
-  label.className = 'label';
-  label.textContent = 'Docs';
-  const a = document.createElement('a');
-  a.className = signedIn ? 'button docs-link hide-narrow' : 'button docs-link';
-  a.href = '/docs';
-  a.title = 'How this blog works';
-  a.setAttribute('aria-label', 'Docs');
-  a.append(svg, label);
-  if (location.pathname.replace(/\/$/, '') === '/docs') a.setAttribute('aria-current', 'page');
-  return a;
-}
-
-// Same header as the blog. The hint cookie tells whether the author is signed in, without calling the API.
-function renderNav() {
-  const nav = document.getElementById('nav');
-  const signedIn = /(?:^|;\s*)blog_signed_in=1(?:;|$)/.test(document.cookie);
-  if (!signedIn) {
-    nav.replaceChildren(docsButton(), link('button primary sign-in', '/auth/login?return=%2Fdocs', 'Sign in'));
-    return;
-  }
-  nav.replaceChildren(
-    docsButton(true),
-    link('button', '/admin', 'Posts'),
-    link('button primary', '/admin/new', '＋ New post'),
-    link('button', '/auth/logout?return=/docs', 'Sign out'),
-  );
-}
 
 function writer(root) {
   return (tag, text, className) => {
@@ -88,7 +40,7 @@ function architecture(root) {
   root.append(stats([
     ['0 servers', 'nothing runs while nobody is writing', 'power'],
     ['1 Lambda', 'only for sign-in and the author’s changes', 'lambda'],
-    ['1 table', 'DynamoDB holds every post and draft', 'dynamodb'],
+    ['2 tables', 'DynamoDB holds posts, drafts and API tokens', 'dynamodb'],
     ['1 CloudFront', 'serves every page, post, picture and API call', 'cloudfront'],
   ]));
 
@@ -100,13 +52,14 @@ function architecture(root) {
         nodes: [
           { icon: 'users', title: 'Readers', text: 'Read the list of posts and open a post; no account' },
           { icon: 'pen', title: 'Author', text: 'Signs in with Microsoft to write, publish and attach files' },
+          { icon: 'bot', title: 'AI agent', text: 'Writes posts for the author through the API, with an API token' },
         ],
       },
       {
         label: 'Edge', badge: 'CDN', tone: 'edge', link: 'HTTPS to blog.dliu.com',
         nodes: [
           { icon: 'cloudfront', title: 'CloudFront', text: 'TLS, caching, security headers; the only public entry point' },
-          { icon: 'code', title: 'Viewer function', text: 'Serves /<postId>, /admin and /docs; redirects old links' },
+          { icon: 'code', title: 'Viewer function', text: 'Serves /<postId>, /admin and /docs; redirects old links; passes API tokens on' },
         ],
       },
       {
@@ -120,7 +73,7 @@ function architecture(root) {
         label: 'Author API', badge: 'On demand', tone: 'app', link: 'Only /api/* and /auth/*',
         nodes: [
           { icon: 'lambda', title: 'API Lambda', text: 'Sign-in, posts, uploads; runs only when called' },
-          { icon: 'dynamodb', title: 'DynamoDB', text: 'Posts and drafts, on-demand billing' },
+          { icon: 'dynamodb', title: 'DynamoDB', text: 'Posts, drafts and hashed API tokens; on-demand billing' },
           { icon: 'ssm', title: 'Parameter Store', text: 'Microsoft app ID and client secret' },
           { icon: 'entra', title: 'Microsoft Entra ID', text: 'Who is signing in' },
         ],
@@ -156,6 +109,21 @@ function architecture(root) {
     ],
   }));
 
+  add('h2', 'API for AI agents');
+  add('p', 'The author can let another AI agent or script write posts without giving it a browser. On /admin/tokens the author generates an API token, saves it in ~/.dliu_credentials on the agent’s computer (like ~/.aws/credentials) and points the agent at the API guide, /docs/api.md, which is plain Markdown written for agents. The agent then calls the same API as the browser, sending the token in an Authorization header.');
+  root.append(flow({
+    title: 'An agent writing a post',
+    numbered: true,
+    steps: [
+      { icon: 'key', title: 'Token', text: 'Generated on /admin/tokens; shown once' },
+      { icon: 'lock', title: 'Credentials file', text: '[blog] token in ~/.dliu_credentials, mode 600' },
+      { icon: 'bot', title: 'Agent', text: 'Reads /docs/api.md, then calls /api/* with the token' },
+      { icon: 'cloudfront', title: 'CloudFront', text: 'The viewer function moves the token to x-blog-token' },
+      { icon: 'lambda', title: 'API', text: 'Checks the token’s hash and expiry, then saves the post' },
+    ],
+    note: 'CloudFront signs requests to the Lambda with origin access control, which replaces the Authorization header, so the viewer function copies the token to its own header first.',
+  }));
+
   add('h2', 'Post IDs');
   add('p', 'Every post gets an ID made of the date it was created and a two-digit counter: the first post of 27 October 2026 is 2026102700, the next one that day 2026102701, and so on up to 99. The date is in UTC. The ID never changes, and it is also the post’s address: blog.dliu.com/2026102701.');
   root.append(table(['Post created', 'ID'], [
@@ -169,13 +137,15 @@ function architecture(root) {
   root.append(table(['Path', 'Served from', 'Caching'], [
     [mono('/, /<postId>, /admin…'), 'Site bucket: index.html (single-page app)', 'Revalidated on every visit'],
     [mono('/docs'), 'Site bucket: docs.html', 'Revalidated on every visit'],
+    [mono('/docs/api, /docs/api.md'), 'Site bucket: API guide as a page and as Markdown for agents', 'Revalidated on every visit'],
     [mono('/content/index.json'), 'Content bucket: list of published posts', 'Revalidated, so changes show at once'],
     [mono('/content/posts/<postId>.json'), 'Content bucket: one published post', 'Revalidated'],
     [mono('/media/<postId>/<file>/<name>'), 'Content bucket: pictures and attachments', 'One day'],
-    [mono('/api/*, /auth/*'), 'API Lambda (author only)', 'Never cached'],
+    [mono('/api/*, /auth/*'), 'API Lambda (author and agents only)', 'Never cached'],
   ]));
   root.append(table(['Store', 'What it holds', 'Public'], [
-    ['DynamoDB table', 'Every post: title, Markdown body, status, dates, file list', 'No'],
+    ['Posts table', 'Every post: title, Markdown body, status, dates, file list', 'No'],
+    ['Tokens table', 'API tokens: name, SHA-256 hash of the secret, expiry, last use', 'No'],
     [mono('content/'), 'JSON for published posts only', 'Yes, through CloudFront'],
     [mono('media/'), 'Files attached to posts (random, unlisted paths)', 'Yes, through CloudFront'],
     [mono('pending/'), 'Uploads not yet saved with a post; deleted after a day', 'No'],
@@ -191,7 +161,7 @@ function architecture(root) {
     ]),
   ));
 
-  source(root, 'Source: dliu-com/blog (lib/blog-stack.ts, functions/viewer-request.js, lambda/api, web/app.js).');
+  source(root, 'Source: dliu-com/blog (lib/blog-stack.ts, functions/viewer-request.js, lambda/api, web/app.js, web/docs/api.md).');
 }
 
 // ---------------------------------------------------------------- Cost
@@ -254,20 +224,24 @@ function cost(root) {
 }
 
 // ---------------------------------------------------------------- Security
+const LOW = { text: 'Low', className: 'risk-low' };
+const MEDIUM = { text: 'Medium', className: 'risk-medium' };
+
 function security(root) {
   const add = writer(root);
 
   root.append(stats([
     ['1 author', 'only dliu.com Microsoft accounts can write', 'entra'],
     ['0 public buckets', 'S3 is reachable only through CloudFront', 'lock'],
-    ['HttpOnly', 'signed session cookie, 30 days', 'cookie'],
+    ['Hashed tokens', 'API tokens are stored only as SHA-256 hashes', 'key'],
     ['Drafts private', 'draft text never leaves DynamoDB', 'eye'],
   ]));
 
   add('h2', 'Who can do what');
   root.append(table(['Who', 'Can', 'How it is enforced'], [
     ['Anyone', 'Read published posts, pictures and files', 'CloudFront serves content/ and media/ read-only'],
-    ['Signed-in dliu.com account', 'Write, publish, unpublish and delete posts; upload files', 'Session cookie checked on every API call'],
+    ['Signed-in dliu.com account', 'Write, publish, unpublish and delete posts; upload files; create and revoke API tokens', 'Session cookie checked on every API call'],
+    ['Holder of an API token', 'List and read posts (drafts too), create, edit, publish and unpublish posts, upload files', 'Token hash and expiry checked on every call; cannot delete posts or manage tokens'],
     ['Any other Microsoft account', 'Nothing more than a reader', 'Refused after sign-in: wrong tenant or domain'],
   ]));
 
@@ -279,15 +253,30 @@ function security(root) {
       { icon: 'browser', title: 'Sign in', text: '/auth/login sends the browser to Microsoft with state, nonce and PKCE' },
       { icon: 'entra', title: 'Microsoft', text: 'The author signs in to the dliu.com tenant' },
       { icon: 'lambda', title: 'Callback', text: 'The API swaps the code for an ID token and checks its signature, issuer, tenant, audience, nonce and expiry' },
-      { icon: 'cookie', title: 'Session', text: 'HMAC-signed __Host- cookie: HttpOnly, Secure, SameSite=Lax' },
+      { icon: 'cookie', title: 'Session', text: 'HMAC-signed __Host- cookie: HttpOnly, Secure, SameSite=Lax, 30 days' },
     ],
     note: 'The client secret is a SecureString in Parameter Store; the session key is derived from it, so rotating the secret signs everyone out.',
   }));
 
+  add('h2', 'API tokens');
+  add('p', 'API tokens let an AI agent or script write posts without a browser. Only the signed-in author can create or revoke them, on /admin/tokens.');
+  root.append(table(['Area', 'Control'], [
+    ['Format', mono('blog_<12-hex ID>_<64-hex secret>'), ],
+    ['Strength', '256 random bits per secret; the ID only finds the record'],
+    ['Storage', 'DynamoDB keeps a SHA-256 hash of the secret; the token is shown once and cannot be shown again'],
+    ['Checking', 'Constant-time comparison of hashes; expiry checked on every call; expired records are deleted automatically'],
+    ['Lifetime', 'Expires after 7, 30, 90 (default) or 365 days, or never; revoke at any time; at most 20 live tokens'],
+    ['Limits', 'Cannot delete posts, create or revoke tokens, or read the token list'],
+    ['Transport', 'Accepted only in the Authorization or x-blog-token header, never in a URL or cookie, so it is absent from access logs'],
+    ['Header handling', 'The viewer function copies Authorization: Bearer to x-blog-token for /api/* and deletes any x-blog-token a client sent itself'],
+    ['Audit', 'Each use is logged with the token’s ID, name, method and path (not the secret); posts saved with a token record it in updatedVia; the token list shows when each was last used'],
+    ['On the agent’s computer', 'Kept in ~/.dliu_credentials, mode 600, under [blog]. The save command reads it without echo, keeps it out of the shell history and clears the macOS clipboard. The guide’s helpers pipe it into curl, so it never appears in output or the process list'],
+  ]));
+
   add('h2', 'Controls');
   root.append(table(['Area', 'Control'], [
     ['Accounts', 'Single-tenant Entra app; only accounts ending in @dliu.com are accepted'],
-    ['Cross-site requests', 'Every change must come from https://blog.dliu.com (Origin check) and the cookie is SameSite=Lax'],
+    ['Cross-site requests', 'Every change made with the session cookie must come from https://blog.dliu.com (Origin check) and the cookie is SameSite=Lax. Token requests need a header that browsers never add across sites, and CORS is never allowed'],
     ['Origins', 'Both buckets and the Lambda Function URL accept only CloudFront, signed with origin access control'],
     ['Buckets', 'Block all public access, S3-managed encryption, HTTPS only'],
     ['Uploads', 'Presigned PUT URLs valid 15 minutes, fixed size and type, at most 100 MB a file and 100 files a post'],
@@ -299,14 +288,40 @@ function security(root) {
   ]));
   root.append(callout('shield', 'The text of drafts and unpublished posts exists only in DynamoDB, which readers cannot reach; publishing is the only step that copies it to the public bucket. Files attached to a draft are already under /media, at addresses with a random 16-character ID that are not listed anywhere until the post is published.'));
 
-  add('h2', 'Residual risks');
-  root.append(table(['Scenario', 'Residual risk', 'Mitigation'], [
-    ['Stolen session cookie', 'Valid until it expires (30 days)', 'HttpOnly and Secure; sign out clears it; rotating the client secret invalidates all sessions'],
-    ['Heavy reader traffic', 'CloudFront bill beyond the free tier', 'Everything is cached at the edge; readers never invoke code'],
-    ['Deleted picture still cached', 'Visible for up to a day at the edge', 'Media is cached for one day; post JSON is revalidated at once'],
+  add('h2', 'Threat model');
+  add('p', 'What could go wrong, what stops it, and how much risk is left. The biggest risks come from API tokens: whoever holds one can publish as the author.');
+  root.append(table(['Scenario', 'Residual risk', 'Controls'], [
+    ['A token leaks from the agent’s computer, chat history or a script', MEDIUM, 'Shown once; kept in a mode-600 file and never in the agent’s instructions or output; expires; revoke on /admin/tokens; last use shown; cannot delete posts or create tokens. Until revoked, the holder can read drafts and publish'],
+    ['A prompt-injected or confused agent publishes unwanted text or overwrites the author’s edits', MEDIUM, 'Agents are told to save drafts unless asked to publish and to read a post before editing it; tokens cannot delete; updatedVia and logs show which token changed what; point-in-time recovery restores the table. Edits have no version check, so the last save wins'],
+    ['Other software running as the same user reads ~/.dliu_credentials', MEDIUM, 'Same exposure as ~/.aws/credentials: file mode 600 stops other users, not the owner’s own processes. Use short expiry and one token per agent so one can be revoked alone'],
+    ['A leaked token is used to fill the bucket with uploads', LOW, 'Uploads are capped at 100 MB a file and 100 files a post; unsaved uploads are deleted after a day; revoking stops new uploads; S3 storage costs about $0.023 per GB-month'],
+    ['Someone guesses a token or forges one', LOW, '256-bit secret; only its hash is stored; constant-time comparison; a wrong token gets 401 and never falls back to the cookie'],
+    ['A client sends its own x-blog-token header to bypass checks', LOW, 'The viewer function deletes it unless it came from Authorization: Bearer, and the value must still match a stored hash'],
+    ['A malicious site makes the author’s browser change posts (CSRF)', LOW, 'Origin check and SameSite=Lax cookie; token requests can’t be forged cross-site because browsers never add the token header for another site'],
+    ['A stolen or forged session cookie', LOW, 'HMAC-signed with a key from Parameter Store, compared in constant time; HttpOnly, Secure, __Host- prefix; expires in 30 days; rotating the client secret signs everyone out'],
+    ['The session cookie is read from the traffic logs', LOW, 'CloudFront access logs include cookies (for the visitor ID) and keep them up to a year in the private log bucket. Only someone with access to the AWS account can read them, and that person can already change the blog'],
+    ['Sign-in is tampered with: forged callback, stolen code or open redirect', LOW, 'state, nonce and PKCE; ID token signature, issuer, tenant and audience checked; return paths must be on this site'],
+    ['A post or upload runs script in readers’ browsers (stored XSS)', LOW, 'Markdown rendered with DOM methods and no raw HTML; safe link schemes only; CSP allows scripts from the site only; HTML and SVG uploads download instead of opening'],
+    ['The tokens page is framed to trick the author into clicking (clickjacking)', LOW, 'X-Frame-Options DENY and CSP frame-ancestors none'],
+    ['Someone calls the Lambda URL or the buckets directly', LOW, 'Origin access control: they accept only requests signed by this CloudFront distribution'],
+    ['A flood of API requests runs up the bill', LOW, 'Reserved concurrency of 10; a wrong token costs one DynamoDB read; readers never call the API'],
+    ['Secrets leak through the source code', LOW, 'The Microsoft client secret is a SecureString in Parameter Store; tokens exist only on the agent’s computer and as hashes'],
+    ['A draft is seen before publishing', LOW, 'Draft text stays in DynamoDB; draft files are at random, unlisted URLs'],
   ]));
 
-  source(root, 'Source: dliu-com/blog (lambda/api/auth.js, lambda/api/index.js, lambda/api/s3.js, web/markdown.js, lib/blog-stack.ts).');
+  add('h2', 'Accepted residual risks');
+  root.append(list([
+    'No WAF or per-client rate limit; reserved Lambda concurrency is the backstop.',
+    'Sessions cannot be revoked one by one; rotating the client secret ends all of them.',
+    'API tokens are not tied to the Microsoft account: signing out or rotating the client secret does not revoke them. Revoke them on /admin/tokens.',
+    'A token can be set to never expire; prefer 90 days or less.',
+    'A token holder can read every draft and publish; there is no read-only or draft-only token.',
+    'There is no per-token upload quota or approval step before an agent’s post goes live.',
+    'Pictures deleted from a post can stay in the CloudFront cache for up to a day.',
+    'Heavy reader traffic beyond the free tier is billed; everything is cached at the edge and no code runs for readers.',
+  ]));
+
+  source(root, 'Source: dliu-com/blog (lambda/api/auth.js, lambda/api/index.js, lambda/api/tokens.js, lambda/api/s3.js, functions/viewer-request.js, web/markdown.js, lib/blog-stack.ts).');
 }
 
 renderNav();
