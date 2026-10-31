@@ -338,7 +338,7 @@ function show(scroll) {
     if (tab.dataset.tab === current) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
-  document.title = `${TITLES[current]} · Docs · Dewei Blog`;
+  document.title = `${TITLES[current]} · Docs · DL blog`;
   if (scroll) window.scrollTo(0, 0);
 }
 window.addEventListener('hashchange', () => show(true));

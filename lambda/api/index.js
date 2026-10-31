@@ -48,7 +48,7 @@ function errorPage(statusCode, message, cookies) {
     statusCode,
     headers: { ...SECURITY_HEADERS, 'content-type': 'text/html; charset=utf-8' },
     ...(cookies ? { cookies } : {}),
-    body: `<!doctype html><meta charset="utf-8"><title>Dewei Blog</title>
+    body: `<!doctype html><meta charset="utf-8"><title>DL blog</title>
 <body style="font-family:system-ui;max-width:32rem;margin:4rem auto">
 <h1>Sign-in problem</h1><p>${escapeHtml(message)}</p><p><a href="/auth/login?return=/admin">Try again</a> · <a href="/">Back to the blog</a></p></body>`,
   };

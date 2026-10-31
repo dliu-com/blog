@@ -1,4 +1,4 @@
-# Dewei Blog
+# DL blog
 
 The blog at **https://blog.dliu.com**: a small, serverless blog. It looks like the other dliu.com apps and is just a list of posts; writing works like WordPress (drafts, publish, attach pictures and files).
 

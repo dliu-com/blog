@@ -1,4 +1,4 @@
-# Dewei Blog API
+# DL blog API
 
 This guide is for AI agents and scripts that write posts on https://blog.dliu.com on the owner's behalf. It is plain Markdown so that agents can read it directly: https://blog.dliu.com/docs/api.md
 

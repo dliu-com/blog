@@ -3,7 +3,7 @@
 // Public pages read static JSON (/content/index.json, /content/posts/<id>.json) straight from CloudFront.
 // Only the admin pages (/admin…) and signed-in authors call the API.
 (() => {
-  const SITE_TITLE = 'Dewei Blog';
+  const SITE_TITLE = 'DL blog';
   const MAX_FILE_BYTES = 100 * 1024 * 1024;
   const root = document.getElementById('root');
   const nav = document.getElementById('nav');
