@@ -1,6 +1,9 @@
 // CloudFront Function (cloudfront-js-2.0), viewer request on the site's default behaviour.
 // - Posts live at /<postId> (yyyymmddNN, e.g. /2026102701); they and /admin/... are pages of the
 //   single-page app (index.html). /docs is docs.html.
+// - For /<postId> the ID goes in x-blog-post: the post-page behaviour asks the API Lambda for index.html
+//   with the post's link-preview tags (falling back to the plain file), and caches per ID.
+//   /<postId>/ redirects to /<postId>. A viewer can't send its own x-blog-post.
 // - /docs/api is docs-api.html (the API guide for people; agents read /docs/api.md).
 // - On /api/*, "Authorization: Bearer <token>" is copied to x-blog-token: CloudFront signs requests to the
 //   Lambda origin (origin access control) and that replaces the viewer's Authorization header.
@@ -20,6 +23,7 @@ function handler(event) {
   var request = event.request;
   var uri = request.uri;
   var match;
+  delete request.headers['x-blog-post'];
   if (uri.indexOf('/api/') === 0 || uri.indexOf('/auth/') === 0) {
     var authorization = request.headers.authorization;
     match = authorization ? /^Bearer\s+(\S+)\s*$/i.exec(authorization.value) : null;
@@ -27,7 +31,14 @@ function handler(event) {
     else delete request.headers['x-blog-token'];
     return request;
   }
-  if (/^\/\d{10}\/?$/.test(uri) || uri === '/admin' || uri.indexOf('/admin/') === 0) {
+  match = /^\/(\d{10})(\/?)$/.exec(uri);
+  if (match && match[2]) return redirect('/' + match[1], 301);
+  if (match) {
+    request.headers['x-blog-post'] = { value: match[1] };
+    request.uri = '/index.html';
+    return request;
+  }
+  if (uri === '/admin' || uri.indexOf('/admin/') === 0) {
     request.uri = '/index.html';
     return request;
   }

@@ -452,3 +452,55 @@ describe('API tokens', () => {
     expect(res.statusCode).toBe(200);
   });
 });
+
+describe('post pages with link-preview tags', () => {
+  const template = '<html><head><title>DL blog</title>\n<meta name="description" content="DL blog: posts by Dewei Liu">\n<!-- share -->\n<meta property="og:title" content="DL blog">\n<!-- /share -->\n</head><body><img class="share-image" src="/share.png" alt="" hidden></body></html>';
+
+  function pageSetup() {
+    const store = createMemoryStore();
+    const files = createMemoryFiles();
+    const handler = createHandler({ store, files, loadConfig: async () => config, loadTemplate: async () => template, now: () => NOW });
+    const page = (id, method = 'GET') => handler({ rawPath: '/index.html', headers: id ? { 'x-blog-post': id } : {}, requestContext: { http: { method } } });
+    return { ...setup(), store, files, handler, page };
+  }
+
+  test('a published post gets its own title, text and picture', async () => {
+    const { store, page } = pageSetup();
+    await store.putPost({
+      id: '2026102701', status: 'published', title: 'Autumn <in> "Dublin"', excerpt: 'Leaves & rain.',
+      cover: '/media/2026102701/abcdefghijklmnop/leaf.jpg', publishedAt: '2026-10-27T10:00:00.000Z', updatedAt: '2026-10-28T10:00:00.000Z',
+    }, { create: true });
+    const res = await page('2026102701');
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('text/html; charset=utf-8');
+    expect(res.headers['cache-control']).toBe('public, max-age=0, s-maxage=300');
+    const image = 'https://blog.dliu.com/media/2026102701/abcdefghijklmnop/leaf.jpg';
+    expect(res.body).toContain('<title>Autumn &#60;in&#62; &#34;Dublin&#34; · DL blog</title>');
+    expect(res.body).toContain('<meta name="description" content="Leaves &#38; rain.">');
+    expect(res.body).toContain('<meta property="og:title" content="Autumn &#60;in&#62; &#34;Dublin&#34;">');
+    expect(res.body).toContain('<meta property="og:url" content="https://blog.dliu.com/2026102701">');
+    expect(res.body).toContain(`<meta property="og:image" content="${image}">`);
+    expect(res.body).toContain(`<img class="share-image" src="${image}" alt="" hidden>`);
+    expect(res.body).not.toContain('og:title" content="DL blog"');
+    expect((await page('2026102701', 'HEAD')).body).toBe('');
+  });
+
+  test('without a picture the site picture is used', async () => {
+    const { store, page } = pageSetup();
+    await store.putPost({ id: '2026102702', status: 'published', title: 'Notes', excerpt: '', cover: 'javascript:alert(1)' }, { create: true });
+    const res = await page('2026102702');
+    expect(res.body).toContain('<meta property="og:image" content="https://blog.dliu.com/share.png">');
+    expect(res.body).toContain('<meta name="description" content="Notes · DL blog">');
+  });
+
+  test('drafts, unknown and bad IDs are 404 so CloudFront serves the plain page', async () => {
+    const { store, page } = pageSetup();
+    await store.putPost({ id: '2026102703', status: 'draft', title: 'Secret draft', excerpt: 'not yet' }, { create: true });
+    for (const id of ['2026102703', '2026102799', '../index', '', '2026102703x']) {
+      const res = await page(id);
+      expect(res.statusCode).toBe(404);
+      expect(res.body).not.toContain('Secret');
+    }
+    expect((await page('2026102703', 'POST')).statusCode).toBe(405);
+  });
+});

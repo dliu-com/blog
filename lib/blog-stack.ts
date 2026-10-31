@@ -136,6 +136,9 @@ export class BlogStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
     });
+    // The post-page handler reads index.html to add each post's link-preview tags.
+    siteBucket.grantRead(apiHandler, 'index.html');
+    apiHandler.addEnvironment('SITE_BUCKET', siteBucket.bucketName);
 
     // CloudFront requires its certificate in us-east-1 (same pattern as the other sites).
     const certificate = new acm.DnsValidatedCertificate(this, 'SiteCertificate', {
@@ -193,8 +196,10 @@ export class BlogStack extends Stack {
       });
     }
 
+    const apiOrigin = origins.FunctionUrlOrigin.withOriginAccessControl(functionUrl, { readTimeout: Duration.seconds(15) });
+    const siteOrigin = origins.S3BucketOrigin.withOriginAccessControl(siteBucket);
     const apiBehavior: cloudfront.BehaviorOptions = {
-      origin: origins.FunctionUrlOrigin.withOriginAccessControl(functionUrl, { readTimeout: Duration.seconds(15) }),
+      origin: apiOrigin,
       allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
       viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
@@ -223,10 +228,39 @@ export class BlogStack extends Stack {
       compress: true,
     };
 
+    // Post pages (/<postId>, IDs start with the year): the API Lambda serves index.html with the post's
+    // link-preview tags. If it answers 404 (not published) or fails, CloudFront serves the plain index.html,
+    // so readers never depend on the Lambda. Cached per post ID (x-blog-post) for as long as the Lambda says.
+    const postPageCache = new cloudfront.CachePolicy(this, 'PostPageCache', {
+      comment: 'blog.dliu.com post pages, keyed by post ID',
+      minTtl: Duration.seconds(0),
+      defaultTtl: Duration.seconds(0),
+      maxTtl: Duration.days(1),
+      headerBehavior: cloudfront.CacheHeaderBehavior.allowList('x-blog-post'),
+      cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
+      enableAcceptEncodingGzip: true,
+      enableAcceptEncodingBrotli: true,
+    });
+    const postPageBehavior: cloudfront.BehaviorOptions = {
+      origin: new origins.OriginGroup({
+        primaryOrigin: apiOrigin,
+        fallbackOrigin: siteOrigin,
+        fallbackStatusCodes: [403, 404, 500, 502, 503, 504],
+      }),
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      cachePolicy: postPageCache,
+      originRequestPolicy: trafficGeoPolicy,
+      responseHeadersPolicy: headers,
+      compress: true,
+      functionAssociations,
+    };
+
     const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       comment: 'blog.dliu.com',
       defaultBehavior: {
-        origin: origins.S3BucketOrigin.withOriginAccessControl(siteBucket),
+        origin: siteOrigin,
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
         cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
@@ -240,6 +274,7 @@ export class BlogStack extends Stack {
         'auth/*': apiBehavior,
         'content/*': contentBehavior,
         'media/*': contentBehavior,
+        '20????????': postPageBehavior,
       },
       domainNames: [domainName],
       certificate,

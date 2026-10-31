@@ -5,6 +5,7 @@ const { loadConfig, NotConfigured } = require('./config');
 const { createFiles, mediaKey, mediaUrl, servedType } = require('./s3');
 const { createStore, Exists, NotFound, TooLarge } = require('./store');
 const tokens = require('./tokens');
+const { createTemplateLoader, renderPostPage } = require('./page');
 const {
   BadRequest, FILE_ID, MAX_FILES, MAX_POSTS_PER_DAY, POST_ID, buildIndex, compareSummaries, derive, newFileId, nextPostNumber, postIdFor, postIdPrefix,
   parsePostUpdate, parseUpload, toApiPost, toPublicPost, toSummary,
@@ -69,6 +70,7 @@ function createHandler(deps = {}) {
   const getConfig = deps.loadConfig || loadConfig;
   const store = deps.store || createStore();
   const files = deps.files || createFiles();
+  const loadTemplate = deps.loadTemplate || createTemplateLoader();
   const fetchImpl = deps.fetchImpl || ((...args) => fetch(...args));
   const clock = deps.now || Date.now;
   const isoNow = () => new Date(clock()).toISOString();
@@ -285,6 +287,24 @@ function createHandler(deps = {}) {
     throw new HttpError(405, 'Method not allowed');
   }
 
+  // A published post's page with its link-preview tags; a 404 makes CloudFront serve the plain index.html.
+  async function postPage(event, method) {
+    if (method !== 'GET' && method !== 'HEAD') return json(405, { error: 'Method not allowed' });
+    const id = header(event, 'x-blog-post') || '';
+    const item = POST_ID.test(id) ? await store.getPost(id) : null;
+    if (!item || item.status !== 'published') return json(404, { error: 'Not found' });
+    return {
+      statusCode: 200,
+      headers: {
+        ...SECURITY_HEADERS,
+        'content-type': 'text/html; charset=utf-8',
+        // CloudFront keeps it for five minutes; edits change the preview after that. Browsers revalidate.
+        'cache-control': 'public, max-age=0, s-maxage=300',
+      },
+      body: method === 'HEAD' ? '' : renderPostPage(await loadTemplate(), item, process.env.SITE_URL),
+    };
+  }
+
   return async function handler(event) {
     const method = (event.requestContext && event.requestContext.http && event.requestContext.http.method) || 'GET';
     const path = event.rawPath || '/';
@@ -292,6 +312,7 @@ function createHandler(deps = {}) {
     const siteUrl = process.env.SITE_URL;
 
     try {
+      if (path === '/index.html') return await postPage(event, method);
       if (path.startsWith('/auth/')) {
         if (method !== 'GET') return json(405, { error: 'Method not allowed' });
         if (path === '/auth/logout') return redirect(auth.safeReturnPath(params.return), auth.logoutCookies());

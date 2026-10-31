@@ -8,8 +8,19 @@ const context = {};
 vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../functions/viewer-request.js'), 'utf8'), context);
 const run = (uri, headers = {}) => context.handler({ request: { uri, headers, querystring: {} } });
 
+test('post pages are index.html with the post ID in x-blog-post', () => {
+  const request = run('/2026102701', { 'x-blog-post': { value: '2026010100' } });
+  expect(request.uri).toBe('/index.html');
+  expect(request.headers['x-blog-post']).toEqual({ value: '2026102701' });
+  expect(run('/2026102701/')).toMatchObject({ statusCode: 301, headers: { location: { value: '/2026102701' } } });
+  // A viewer can't pick the post another page is rendered (and cached) for.
+  for (const uri of ['/', '/index.html', '/admin', '/api/posts', '/20261027ab']) {
+    expect(run(uri, { 'x-blog-post': { value: '2026102701' } }).headers['x-blog-post']).toBeUndefined();
+  }
+});
+
 test('app pages are served by index.html', () => {
-  for (const uri of ['/2026102701', '/2026102700/', '/admin', '/admin/', '/admin/new', '/admin/posts/2026102700']) {
+  for (const uri of ['/admin', '/admin/', '/admin/new', '/admin/posts/2026102700']) {
     expect(run(uri).uri).toBe('/index.html');
   }
 });

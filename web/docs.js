@@ -39,7 +39,7 @@ function architecture(root) {
 
   root.append(stats([
     ['0 servers', 'nothing runs while nobody is writing', 'power'],
-    ['1 Lambda', 'only for sign-in and the author’s changes', 'lambda'],
+    ['1 Lambda', 'for the author, and post pages’ share previews', 'lambda'],
     ['2 tables', 'DynamoDB holds posts, drafts and API tokens', 'dynamodb'],
     ['1 CloudFront', 'serves every page, post, picture and API call', 'cloudfront'],
   ]));
@@ -60,6 +60,7 @@ function architecture(root) {
         nodes: [
           { icon: 'cloudfront', title: 'CloudFront', text: 'TLS, caching, security headers; the only public entry point' },
           { icon: 'code', title: 'Viewer function', text: 'Serves /<postId>, /admin and /docs; redirects old links; passes API tokens on' },
+          { icon: 'page', title: 'Post-page cache', text: 'Each post page with its share preview, kept five minutes' },
         ],
       },
       {
@@ -70,16 +71,16 @@ function architecture(root) {
         ],
       },
       {
-        label: 'Author API', badge: 'On demand', tone: 'app', link: 'Only /api/* and /auth/*',
+        label: 'Author API', badge: 'On demand', tone: 'app', link: '/api/*, /auth/*, and post pages on a cache miss',
         nodes: [
-          { icon: 'lambda', title: 'API Lambda', text: 'Sign-in, posts, uploads; runs only when called' },
+          { icon: 'lambda', title: 'API Lambda', text: 'Sign-in, posts, uploads, post-page share tags; runs only when called' },
           { icon: 'dynamodb', title: 'DynamoDB', text: 'Posts, drafts and hashed API tokens; on-demand billing' },
           { icon: 'ssm', title: 'Parameter Store', text: 'Microsoft app ID and client secret' },
           { icon: 'entra', title: 'Microsoft Entra ID', text: 'Who is signing in' },
         ],
       },
     ],
-    note: 'Readers never reach the Lambda or the database: the home page and posts are files that the API writes when the author publishes.',
+    note: 'The home page and posts are files that the API writes when the author publishes. The only thing readers ask the Lambda for is a post page’s share preview, at most once per post every five minutes per CloudFront location; if the Lambda fails, CloudFront serves the plain page.',
   }));
 
   add('h2', 'Reading the blog');
@@ -88,7 +89,7 @@ function architecture(root) {
     numbered: true,
     steps: [
       { icon: 'browser', title: 'Browser', text: 'Asks for /2026102701' },
-      { icon: 'cloudfront', title: 'CloudFront', text: 'The viewer function maps it to index.html' },
+      { icon: 'cloudfront', title: 'CloudFront', text: 'Serves index.html with the post’s title, text and picture for link previews (from cache, or the Lambda adds them)' },
       { icon: 'page', title: 'App', text: 'app.js loads /content/posts/2026102701.json' },
       { icon: 'image', title: 'Media', text: 'Pictures and files come from /media/…, cached for a day' },
     ],
@@ -135,7 +136,8 @@ function architecture(root) {
 
   add('h2', 'Where things live');
   root.append(table(['Path', 'Served from', 'Caching'], [
-    [mono('/, /<postId>, /admin…'), 'Site bucket: index.html (single-page app)', 'Revalidated on every visit'],
+    [mono('/, /admin…'), 'Site bucket: index.html (single-page app)', 'Revalidated on every visit'],
+    [mono('/<postId>'), 'API Lambda: index.html with the post’s share tags; site bucket’s index.html if the post isn’t published or the Lambda fails', 'Five minutes at CloudFront, revalidated by browsers'],
     [mono('/docs'), 'Site bucket: docs.html', 'Revalidated on every visit'],
     [mono('/docs/api, /docs/api.md'), 'Site bucket: API guide as a page and as Markdown for agents', 'Revalidated on every visit'],
     [mono('/content/index.json'), 'Content bucket: list of published posts', 'Revalidated, so changes show at once'],
@@ -182,7 +184,7 @@ function cost(root) {
     ['S3 requests', '$0.005 per 1,000 PUTs (one per upload and per published change); $0.0004 per 1,000 GETs on CloudFront cache misses', num('$0')],
     ['CloudFront', 'Free each month: 1 TB out, 10 million requests, 2 million function runs. Then $0.085 per GB and about $0.01 per 10,000 requests', num('$0')],
     ['CloudFront Functions', 'Page and visitor-ID functions: $0.10 per million runs after the free 2 million', num('$0')],
-    ['API Lambda', '$0.20 per million calls and $0.0000167 per GB-second (512 MB). Free each month: 1 million calls and 400,000 GB-seconds. Readers never call it', num('$0')],
+    ['API Lambda', '$0.20 per million calls and $0.0000167 per GB-second (512 MB). Free each month: 1 million calls and 400,000 GB-seconds. Readers call it only for post-page share tags, which CloudFront caches', num('$0')],
     ['DynamoDB', 'On demand: $1.25 per million writes and $0.25 per million reads; 25 GB of storage free', num('$0')],
     ['DynamoDB backups', 'Point-in-time recovery: $0.20 per GB-month of table data; posts are a few KB each', num('< $0.01')],
     ['Parameter Store and KMS', 'Standard parameters are free; the AWS-managed key decrypts the client secret, 20,000 free requests a month', num('$0')],
@@ -212,7 +214,7 @@ function cost(root) {
   root.append(flow({
     title: 'What keeps the bill small',
     steps: [
-      { icon: 'power', title: 'No idle servers', text: 'The Lambda runs only for the author' },
+      { icon: 'power', title: 'No idle servers', text: 'The Lambda runs only when called' },
       { icon: 'page', title: 'Static for readers', text: 'Published posts are files written on publish' },
       { icon: 'upload', title: 'Direct uploads', text: 'Files go from the browser to S3, not through Lambda' },
       { icon: 'clock', title: 'Clean-up', text: 'Unsaved uploads are deleted after a day' },
@@ -306,6 +308,7 @@ function security(root) {
     ['An agent puts a picture from another site in a post to track readers', LOW, 'Pictures may come from any https address, so that site sees readers’ IP addresses; review agent posts before publishing'],
     ['A post embeds a player that misbehaves or loads another site', LOW, 'Only video.dliu.com, the owner’s own site, can be framed (CSP frame-src). The player address is rebuilt from a 10-digit video ID and a few checked options; nothing else from a pasted embed code is used'],
     ['The tokens page is framed to trick the author into clicking (clickjacking)', LOW, 'X-Frame-Options DENY and CSP frame-ancestors none'],
+    ['Readers flood post pages to use up the Lambda, or poison a cached share preview', LOW, 'CloudFront caches each post page for five minutes, and serves the plain page if the Lambda fails, so posts stay readable. The page is keyed by a post-ID header that only the viewer function sets; one sent by a reader is dropped. Only published posts get tags, built from their escaped title, excerpt and own picture'],
     ['Someone calls the Lambda URL or the buckets directly', LOW, 'Origin access control: they accept only requests signed by this CloudFront distribution'],
     ['A flood of API requests runs up the bill', LOW, 'Reserved concurrency of 10; a wrong token costs one DynamoDB read; readers never call the API'],
     ['Secrets leak through the source code', LOW, 'The source is public, so security does not rely on hiding it. The Microsoft client secret is a SecureString in Parameter Store; tokens exist only on the agent’s computer and as hashes'],

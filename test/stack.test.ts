@@ -67,12 +67,34 @@ test('api reads only its own parameters', () => {
 test('CloudFront routes the API, published content and media', () => {
   const [distribution] = Object.values(template.findResources('AWS::CloudFront::Distribution')) as any[];
   const config = distribution.Properties.DistributionConfig;
-  expect(config.CacheBehaviors.map((b: any) => b.PathPattern)).toEqual(['api/*', 'auth/*', 'content/*', 'media/*']);
+  expect(config.CacheBehaviors.map((b: any) => b.PathPattern)).toEqual(['api/*', 'auth/*', 'content/*', 'media/*', '20????????']);
   expect(config.CacheBehaviors.find((b: any) => b.PathPattern === 'content/*').AllowedMethods).toEqual(['GET', 'HEAD']);
   expect(config.CustomErrorResponses).toBeUndefined();
   expect(config.Logging).toEqual({ IncludeCookies: true });
   expect(config.DefaultCacheBehavior.FunctionAssociations.map((f: any) => f.EventType)).toEqual(['viewer-request', 'viewer-response']);
-  expect(config.Origins).toHaveLength(3);
+  // Site bucket, Lambda, content bucket, and the Lambda again as the post-page group's primary.
+  expect(config.Origins).toHaveLength(4);
+  // Post pages: the Lambda adds link-preview tags; the plain index.html is the fallback, cached per post ID.
+  const posts = config.CacheBehaviors.find((b: any) => b.PathPattern === '20????????');
+  expect(posts.AllowedMethods).toEqual(['GET', 'HEAD']);
+  expect(posts.FunctionAssociations.map((f: any) => f.EventType)).toEqual(['viewer-request', 'viewer-response']);
+  const [group] = config.OriginGroups.Items;
+  expect(posts.TargetOriginId).toBe(group.Id);
+  expect(group.FailoverCriteria.StatusCodes.Items).toEqual(expect.arrayContaining([403, 404, 500, 502, 503, 504]));
+  const [primary, fallback] = group.Members.Items.map((m: any) => m.OriginId);
+  const origin = (id: string) => config.Origins.find((o: any) => o.Id === id);
+  const apiOrigin = origin(config.CacheBehaviors.find((b: any) => b.PathPattern === 'api/*').TargetOriginId);
+  expect(origin(primary).DomainName).toEqual(apiOrigin.DomainName);
+  expect(origin(primary).OriginAccessControlId).toEqual(apiOrigin.OriginAccessControlId);
+  expect(fallback).toBe(config.DefaultCacheBehavior.TargetOriginId);
+  template.hasResourceProperties('AWS::CloudFront::CachePolicy', {
+    CachePolicyConfig: Match.objectLike({
+      ParametersInCacheKeyAndForwardedToOrigin: Match.objectLike({
+        HeadersConfig: { HeaderBehavior: 'whitelist', Headers: ['x-blog-post'] },
+        CookiesConfig: { CookieBehavior: 'none' },
+      }),
+    }),
+  });
   // The viewer function copies Authorization: Bearer to x-blog-token before CloudFront signs for Lambda.
   const api = config.CacheBehaviors.find((b: any) => b.PathPattern === 'api/*');
   expect(api.FunctionAssociations.map((f: any) => f.EventType)).toEqual(['viewer-request']);
