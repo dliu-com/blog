@@ -504,3 +504,89 @@ describe('post pages with link-preview tags', () => {
     expect((await page('2026102703', 'POST')).statusCode).toBe(405);
   });
 });
+
+describe('reactions', () => {
+  const VISITOR = 'mgx2k1abcdefghij0123';
+  const OTHER = 'mgx2k1zzzzzzzzzz9999';
+
+  async function reactSetup() {
+    process.env.ROOT_DOMAIN = 'dliu.com';
+    const env = setup();
+    const post = await createPost(env.call, { title: 'Hello', body: 'Hi', status: 'published' });
+    const react = (reaction, { visitor = VISITOR, ip = '203.0.113.7', ...options } = {}) => env.call('POST', `/api/reactions/${post.id}`, {
+      signedIn: false, body: { reaction }, headers: { ...(visitor ? { cookie: `dl_vid=${visitor}` } : {}), 'x-blog-viewer': ip }, ...options,
+    });
+    const read = (visitor = VISITOR) => env.call('GET', `/api/reactions/${post.id}`, { signedIn: false, origin: null, headers: visitor ? { cookie: `dl_vid=${visitor}` } : {} });
+    return { ...env, post, react, read };
+  }
+  const counts = (like, love, haha, sad) => ({ like, love, haha, sad });
+
+  test('a reader reacts once per post, switches and removes it, keyed by the dl_vid cookie', async () => {
+    const { react, read, store, post } = await reactSetup();
+    expect((await read()).json).toEqual({ counts: counts(0, 0, 0, 0), mine: null });
+
+    let res = await react('love');
+    expect(res.statusCode).toBe(200);
+    expect(res.json).toEqual({ counts: counts(0, 1, 0, 0), mine: 'love' });
+    expect(res.cookies).toBeUndefined();
+    expect(store.reactions.get(post.id).visitors.get(VISITOR)).toBe('love');
+    expect((await react('love')).json).toEqual({ counts: counts(0, 1, 0, 0), mine: 'love' });
+
+    expect((await react('haha', { visitor: OTHER })).json).toEqual({ counts: counts(0, 1, 1, 0), mine: 'haha' });
+    expect((await react('like')).json).toEqual({ counts: counts(1, 0, 1, 0), mine: 'like' });
+    expect((await read()).json).toEqual({ counts: counts(1, 0, 1, 0), mine: 'like' });
+    expect((await read(OTHER)).json.mine).toBe('haha');
+    expect((await read('')).json.mine).toBeNull();
+
+    res = await react(null);
+    expect(res.json).toEqual({ counts: counts(0, 0, 1, 0), mine: null });
+    expect((await react(null)).json.mine).toBeNull();
+  });
+
+  test('a browser without a valid dl_vid gets one, like the traffic monitor sets', async () => {
+    const { react, read } = await reactSetup();
+    for (const visitor of ['', 'BAD;value', 'short']) {
+      const res = await react('sad', { visitor });
+      expect(res.statusCode).toBe(200);
+      expect(res.cookies).toHaveLength(1);
+      const [, id] = /^dl_vid=([a-z0-9]{8,40}); Domain=\.dliu\.com; Path=\/; Max-Age=31536000; Secure; HttpOnly; SameSite=Lax$/.exec(res.cookies[0]) || [];
+      expect(id).toBeDefined();
+      expect((await read(id)).json.mine).toBe('sad');
+    }
+    expect((await read('')).json.counts.sad).toBe(3);
+  });
+
+  test('only same-site JSON with a known reaction, on published posts', async () => {
+    const { react, call, post } = await reactSetup();
+    expect((await react('like', { origin: 'https://evil.example' })).statusCode).toBe(403);
+    expect((await react('like', { origin: null })).statusCode).toBe(403);
+    expect((await react('like', { contentType: 'text/plain' })).statusCode).toBe(415);
+    for (const body of [{ reaction: 'angry' }, { reaction: 1 }, {}, ['like'], 'null']) {
+      expect((await call('POST', `/api/reactions/${post.id}`, { signedIn: false, body })).statusCode).toBe(400);
+    }
+    const draft = await createPost(call, { title: 'Draft' });
+    expect((await call('POST', `/api/reactions/${draft.id}`, { signedIn: false, body: { reaction: 'like' } })).statusCode).toBe(404);
+    expect((await call('POST', '/api/reactions/2099010199', { signedIn: false, body: { reaction: 'like' } })).statusCode).toBe(404);
+    expect((await call('GET', '/api/reactions/../posts', { signedIn: false })).statusCode).toBe(404);
+    expect((await call('GET', `/api/reactions/${post.id}/x`, { signedIn: false })).statusCode).toBe(404);
+    expect((await call('PUT', `/api/reactions/${post.id}`, { signedIn: false, body: { reaction: 'like' } })).statusCode).toBe(405);
+  });
+
+  test('at most 60 changes per IP address per hour', async () => {
+    const { react, tick } = await reactSetup();
+    for (let i = 0; i < 60; i += 1) expect((await react(i % 2 ? 'like' : null)).statusCode).toBe(200);
+    const blocked = await react('love');
+    expect(blocked.statusCode).toBe(429);
+    expect(blocked.json.error).toMatch(/Too many reactions/);
+    expect((await react('love', { ip: '198.51.100.1' })).statusCode).toBe(200);
+    tick(3600 * 1000);
+    expect((await react('haha')).statusCode).toBe(200);
+  });
+
+  test('deleting a post deletes its reactions', async () => {
+    const { react, call, store, post } = await reactSetup();
+    await react('love');
+    expect((await call('DELETE', `/api/posts/${post.id}`)).statusCode).toBe(200);
+    expect(store.reactions.has(post.id)).toBe(false);
+  });
+});

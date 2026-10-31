@@ -39,8 +39,8 @@ function architecture(root) {
 
   root.append(stats([
     ['0 servers', 'nothing runs while nobody is writing', 'power'],
-    ['1 Lambda', 'for the author, and post pages’ share previews', 'lambda'],
-    ['2 tables', 'DynamoDB holds posts, drafts and API tokens', 'dynamodb'],
+    ['1 Lambda', 'for the author, reactions and post pages’ share previews', 'lambda'],
+    ['3 tables', 'DynamoDB holds posts, drafts, API tokens and reactions', 'dynamodb'],
     ['1 CloudFront', 'serves every page, post, picture and API call', 'cloudfront'],
   ]));
 
@@ -50,7 +50,7 @@ function architecture(root) {
       {
         label: 'People', badge: 'Browser', tone: 'untrusted',
         nodes: [
-          { icon: 'users', title: 'Readers', text: 'Read the list of posts and open a post; no account' },
+          { icon: 'users', title: 'Readers', text: 'Read the list of posts, open a post and react to it; no account' },
           { icon: 'pen', title: 'Author', text: 'Signs in with Microsoft to write, publish and attach files' },
           { icon: 'bot', title: 'AI agent', text: 'Writes posts for the author through the API, with an API token' },
         ],
@@ -73,14 +73,14 @@ function architecture(root) {
       {
         label: 'Author API', badge: 'On demand', tone: 'app', link: '/api/*, /auth/*, and post pages on a cache miss',
         nodes: [
-          { icon: 'lambda', title: 'API Lambda', text: 'Sign-in, posts, uploads, post-page share tags; runs only when called' },
-          { icon: 'dynamodb', title: 'DynamoDB', text: 'Posts, drafts and hashed API tokens; on-demand billing' },
+          { icon: 'lambda', title: 'API Lambda', text: 'Sign-in, posts, uploads, reactions, post-page share tags; runs only when called' },
+          { icon: 'dynamodb', title: 'DynamoDB', text: 'Posts, drafts, hashed API tokens and reaction counts; on-demand billing' },
           { icon: 'ssm', title: 'Parameter Store', text: 'Microsoft app ID and client secret' },
           { icon: 'entra', title: 'Microsoft Entra ID', text: 'Who is signing in' },
         ],
       },
     ],
-    note: 'The home page and posts are files that the API writes when the author publishes. The only thing readers ask the Lambda for is a post page’s share preview, at most once per post every five minutes per CloudFront location; if the Lambda fails, CloudFront serves the plain page.',
+    note: 'The home page and posts are files that the API writes when the author publishes. Readers ask the Lambda for two things: a post page’s share preview, at most once per post every five minutes per CloudFront location, and the post’s reactions. If the Lambda fails, CloudFront serves the plain page and the reaction buttons stay hidden.',
   }));
 
   add('h2', 'Reading the blog');
@@ -92,6 +92,7 @@ function architecture(root) {
       { icon: 'cloudfront', title: 'CloudFront', text: 'Serves index.html with the post’s title, text and picture for link previews (from cache, or the Lambda adds them)' },
       { icon: 'page', title: 'App', text: 'app.js loads /content/posts/2026102701.json' },
       { icon: 'image', title: 'Media', text: 'Pictures and files come from /media/…, cached for a day' },
+      { icon: 'lambda', title: 'Reactions', text: 'app.js asks /api/reactions/2026102701 for the counts and the reader’s own reaction' },
     ],
     note: 'The home page reads /content/index.json, a list of every published post with its title and date. There is no paging; the blog is small.',
   }));
@@ -125,6 +126,10 @@ function architecture(root) {
     note: 'CloudFront signs requests to the Lambda with origin access control, which replaces the Authorization header, so the viewer function copies the token to its own header first.',
   }));
 
+  add('h2', 'Reactions');
+  add('p', 'Under each post, readers can react with 👍 Like, ❤️ Love, 😂 Haha or 😢 Sad, without an account. Each reader has one reaction per post: choosing another switches it, and clicking the same one again removes it. A line under the buttons says what the reader chose, such as “You liked this post”.');
+  add('p', 'Readers are told apart by the dl_vid cookie, the same visitor ID the traffic monitor sets for all of dliu.com (HttpOnly, one year). A reader who has none gets one on their first reaction. The Reactions table keeps one count item per post and one item per reader and post; a single conditional transaction moves the reader’s item and both counts, so the counts never drift. To slow down count inflation, each IP address may react at most 60 times an hour; the address is stored only as a SHA-256 hash, in a window that expires after two hours.');
+
   add('h2', 'Post IDs');
   add('p', 'Every post gets an ID made of the date it was created and a two-digit counter: the first post of 27 October 2026 is 2026102700, the next one that day 2026102701, and so on up to 99. The date is in UTC. The ID never changes, and it is also the post’s address: blog.dliu.com/2026102701.');
   root.append(table(['Post created', 'ID'], [
@@ -143,11 +148,13 @@ function architecture(root) {
     [mono('/content/index.json'), 'Content bucket: list of published posts', 'Revalidated, so changes show at once'],
     [mono('/content/posts/<postId>.json'), 'Content bucket: one published post', 'Revalidated'],
     [mono('/media/<postId>/<file>/<name>'), 'Content bucket: pictures and attachments', 'One day'],
+    [mono('/api/reactions/<postId>'), 'API Lambda: reaction counts for anyone; react without an account', 'Never cached'],
     [mono('/api/*, /auth/*'), 'API Lambda (author and agents only)', 'Never cached'],
   ]));
   root.append(table(['Store', 'What it holds', 'Public'], [
     ['Posts table', 'Every post: title, Markdown body, status, dates, file list', 'No'],
     ['Tokens table', 'API tokens: name, SHA-256 hash of the secret, expiry, last use', 'No'],
+    ['Reactions table', 'Counts per post; each reader’s reaction by visitor ID; hashed-IP rate-limit windows', 'Counts only, through the API'],
     [mono('content/'), 'JSON for published posts only', 'Yes, through CloudFront'],
     [mono('media/'), 'Files attached to posts (random, unlisted paths)', 'Yes, through CloudFront'],
     [mono('pending/'), 'Uploads not yet saved with a post; deleted after a day', 'No'],
@@ -174,7 +181,7 @@ function cost(root) {
     ['$0', 'fixed monthly fee for compute', 'budget'],
     ['≈ $0.023', 'per GB of pictures and files per month', 's3'],
     ['1 TB free', 'of CloudFront delivery each month', 'cloudfront'],
-    ['$0', 'to read a post: no code runs', 'users'],
+    ['$0', 'to read a post, in the free tier', 'users'],
   ]));
 
   add('h2', 'What each part costs');
@@ -184,8 +191,8 @@ function cost(root) {
     ['S3 requests', '$0.005 per 1,000 PUTs (one per upload and per published change); $0.0004 per 1,000 GETs on CloudFront cache misses', num('$0')],
     ['CloudFront', 'Free each month: 1 TB out, 10 million requests, 2 million function runs. Then $0.085 per GB and about $0.01 per 10,000 requests', num('$0')],
     ['CloudFront Functions', 'Page and visitor-ID functions: $0.10 per million runs after the free 2 million', num('$0')],
-    ['API Lambda', '$0.20 per million calls and $0.0000167 per GB-second (512 MB). Free each month: 1 million calls and 400,000 GB-seconds. Readers call it only for post-page share tags, which CloudFront caches', num('$0')],
-    ['DynamoDB', 'On demand: $1.25 per million writes and $0.25 per million reads; 25 GB of storage free', num('$0')],
+    ['API Lambda', '$0.20 per million calls and $0.0000167 per GB-second (512 MB). Free each month: 1 million calls and 400,000 GB-seconds. Readers call it for post-page share tags, which CloudFront caches, and once per post view for reactions', num('$0')],
+    ['DynamoDB', 'On demand: $1.25 per million writes and $0.25 per million reads; 25 GB of storage free. A post view reads 2 items; a reaction writes about 4', num('$0')],
     ['DynamoDB backups', 'Point-in-time recovery: $0.20 per GB-month of table data; posts are a few KB each', num('< $0.01')],
     ['Parameter Store and KMS', 'Standard parameters are free; the AWS-managed key decrypts the client secret, 20,000 free requests a month', num('$0')],
     ['CloudWatch Logs', 'Lambda logs kept one month; $0.57 per GB, a few KB a month', num('$0')],
@@ -209,13 +216,14 @@ function cost(root) {
     ['500 MB of pictures stored', num('≈ $0.01 / month')],
     ['Writing and publishing a post with 10 pictures (about 30 API calls)', num('< $0.0001')],
     ['10,000 page views a month', num('$0 in the free tier')],
+    ['1,000 reactions a month', num('≈ $0.005')],
   ]));
 
   root.append(flow({
     title: 'What keeps the bill small',
     steps: [
       { icon: 'power', title: 'No idle servers', text: 'The Lambda runs only when called' },
-      { icon: 'page', title: 'Static for readers', text: 'Published posts are files written on publish' },
+      { icon: 'page', title: 'Static for readers', text: 'Published posts are files written on publish; only reactions need the Lambda' },
       { icon: 'upload', title: 'Direct uploads', text: 'Files go from the browser to S3, not through Lambda' },
       { icon: 'clock', title: 'Clean-up', text: 'Unsaved uploads are deleted after a day' },
     ],
@@ -242,6 +250,7 @@ function security(root) {
   add('h2', 'Who can do what');
   root.append(table(['Who', 'Can', 'How it is enforced'], [
     ['Anyone', 'Read published posts, pictures and files', 'CloudFront serves content/ and media/ read-only'],
+    ['Any reader', 'One reaction per published post, changed or removed at will; see the counts', 'Keyed by the dl_vid visitor cookie; at most 60 reactions an hour per IP address; same-site requests only'],
     ['Signed-in dliu.com account', 'Write, publish, unpublish and delete posts; upload files; create and revoke API tokens', 'Session cookie checked on every API call'],
     ['Holder of an API token', 'List and read posts (drafts too), create, edit, publish and unpublish posts, upload files', 'Token hash and expiry checked on every call; cannot delete posts or manage tokens'],
     ['Any other Microsoft account', 'Nothing more than a reader', 'Refused after sign-in: wrong tenant or domain'],
@@ -287,6 +296,7 @@ function security(root) {
     ['Headers', 'Content-Security-Policy (scripts and styles from the site only, frames from video.dliu.com only), HSTS, X-Frame-Options DENY, nosniff, strict referrer'],
     ['Data', 'DynamoDB with deletion protection, point-in-time recovery and retain-on-delete'],
     ['Lambda', 'Reserved concurrency of 10 caps runaway cost; logs kept one month'],
+    ['Reactions', 'Same-site JSON POST only; one of four values; published posts only; 60 an hour per IP, taken from CloudFront’s view of the connection (the viewer function overwrites x-blog-viewer, so clients can’t choose it); IPs kept only as hashes for two hours'],
   ]));
   root.append(callout('shield', 'The text of drafts and unpublished posts exists only in DynamoDB, which readers cannot reach; publishing is the only step that copies it to the public bucket. Files attached to a draft are already under /media, at addresses with a random 16-character ID that are not listed anywhere until the post is published.'));
 
@@ -310,24 +320,29 @@ function security(root) {
     ['The tokens page is framed to trick the author into clicking (clickjacking)', LOW, 'X-Frame-Options DENY and CSP frame-ancestors none'],
     ['Readers flood post pages to use up the Lambda, or poison a cached share preview', LOW, 'CloudFront caches each post page for five minutes, and serves the plain page if the Lambda fails, so posts stay readable. The page is keyed by a post-ID header that only the viewer function sets; one sent by a reader is dropped. Only published posts get tags, built from their escaped title, excerpt and own picture'],
     ['Someone calls the Lambda URL or the buckets directly', LOW, 'Origin access control: they accept only requests signed by this CloudFront distribution'],
-    ['A flood of API requests runs up the bill', LOW, 'Reserved concurrency of 10; a wrong token costs one DynamoDB read; readers never call the API'],
+    ['A flood of API requests runs up the bill', LOW, 'Reserved concurrency of 10; a wrong token costs one DynamoDB read; reactions are limited to 60 an hour per IP'],
+    ['Someone inflates reaction counts by clearing cookies or forging visitor IDs', MEDIUM, 'One reaction per dl_vid, but anyone can drop or invent the cookie, so the 60-an-hour limit per IP is the real cap; many IPs (a botnet, or switching networks) can still add more. Counts are for fun and grant nothing; the author can delete the post’s reactions by deleting it, or edit the table'],
+    ['Someone changes another reader’s reaction', LOW, 'Only by knowing that reader’s dl_vid, which is HttpOnly, random and sent only to dliu.com over HTTPS. The traffic monitor makes these IDs with Math.random, so they are not secret-grade; the worst outcome is a changed reaction'],
+    ['Reactions are used to track readers', LOW, 'A reaction is stored with the reader’s dl_vid, which the traffic monitor already links to their visits; no name, email or IP is kept. Reacting is optional'],
+    ['Reaction traffic uses up the Lambda the author needs', LOW, 'Reserved concurrency of 10 is shared; reaction counts are loaded after the post, and if the Lambda is busy the buttons stay hidden while the post still reads normally. Author requests retry'],
     ['Secrets leak through the source code', LOW, 'The source is public, so security does not rely on hiding it. The Microsoft client secret is a SecureString in Parameter Store; tokens exist only on the agent’s computer and as hashes'],
     ['A draft is seen before publishing', LOW, 'Draft text stays in DynamoDB; draft files are at random, unlisted URLs'],
   ]));
 
   add('h2', 'Accepted residual risks');
   root.append(list([
-    'No WAF or per-client rate limit; reserved Lambda concurrency is the backstop.',
+    'No WAF; the only per-client rate limit is for reactions, and reserved Lambda concurrency is the backstop.',
+    'Reaction counts can be inflated from many IP addresses; they are not proof of anything.',
     'Sessions cannot be revoked one by one; rotating the client secret ends all of them.',
     'API tokens are not tied to the Microsoft account: signing out or rotating the client secret does not revoke them. Revoke them on /admin/tokens.',
     'A token can be set to never expire; prefer 90 days or less.',
     'A token holder can read every draft and publish; there is no read-only or draft-only token.',
     'There is no per-token upload quota or approval step before an agent’s post goes live.',
     'Pictures deleted from a post can stay in the CloudFront cache for up to a day.',
-    'Heavy reader traffic beyond the free tier is billed; everything is cached at the edge and no code runs for readers.',
+    'Heavy reader traffic beyond the free tier is billed; pages are cached at the edge, but each post view also loads its reactions from the Lambda.',
   ]));
 
-  source(root, 'Source: dliu-com/blog (lambda/api/auth.js, lambda/api/index.js, lambda/api/tokens.js, lambda/api/s3.js, functions/viewer-request.js, web/markdown.js, lib/blog-stack.ts).');
+  source(root, 'Source: dliu-com/blog (lambda/api/auth.js, lambda/api/index.js, lambda/api/tokens.js, lambda/api/reactions.js, lambda/api/s3.js, functions/viewer-request.js, web/markdown.js, lib/blog-stack.ts).');
 }
 
 renderNav();

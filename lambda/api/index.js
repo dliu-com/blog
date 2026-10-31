@@ -3,8 +3,9 @@
 const auth = require('./auth');
 const { loadConfig, NotConfigured } = require('./config');
 const { createFiles, mediaKey, mediaUrl, servedType } = require('./s3');
-const { createStore, Exists, NotFound, TooLarge } = require('./store');
+const { createStore, Conflict, Exists, NotFound, TooLarge } = require('./store');
 const tokens = require('./tokens');
+const reactions = require('./reactions');
 const { createTemplateLoader, renderPostPage } = require('./page');
 const {
   BadRequest, FILE_ID, MAX_FILES, MAX_POSTS_PER_DAY, POST_ID, buildIndex, compareSummaries, derive, newFileId, nextPostNumber, postIdFor, postIdPrefix,
@@ -162,6 +163,51 @@ function createHandler(deps = {}) {
     throw new HttpError(405, 'Method not allowed');
   }
 
+  // Readers' reactions: GET the counts and your own; POST {"reaction": "love"} or {"reaction": null}.
+  // The visitor is the dl_vid cookie (set here if the browser has none yet). No sign-in.
+  async function reactionsApi(method, parts, event) {
+    const [, postId] = parts;
+    if (parts.length !== 2 || !POST_ID.test(postId)) throw new NotFound('Not found');
+    const cookie = auth.parseCookies(event)[reactions.VISITOR_COOKIE] || '';
+    const known = reactions.VISITOR_ID.test(cookie) ? cookie : '';
+    if (method === 'GET') {
+      const { counts, mine } = await store.getReactions(postId, known);
+      return json(200, { counts: reactions.toCounts(counts), mine });
+    }
+    if (method !== 'POST') throw new HttpError(405, 'Method not allowed');
+    requireSameOrigin(event);
+    let reaction;
+    try {
+      reaction = reactions.parseReaction(readBody(event));
+    } catch (error) {
+      if (error instanceof reactions.ReactionInputError) throw new BadRequest(error.message);
+      throw error;
+    }
+    const post = await store.getPost(postId);
+    if (!post || post.status !== 'published') throw new NotFound('Post not found');
+    // x-blog-viewer is the viewer's IP, set by the CloudFront function (a viewer can't send its own).
+    const span = reactions.RATE_WINDOW_SECONDS;
+    const windowStart = Math.floor(clock() / 1000 / span) * span;
+    const allowed = await store.countRequest(reactions.viewerKey(header(event, 'x-blog-viewer')), windowStart, reactions.RATE_LIMIT, windowStart + 2 * span);
+    if (!allowed) throw new HttpError(429, 'Too many reactions from your network. Please try again later.');
+
+    const visitor = known || reactions.newVisitorId(clock());
+    for (let attempt = 0; ; attempt += 1) {
+      const { mine } = await store.getReactions(postId, visitor);
+      if (mine === reaction) break;
+      try {
+        await store.setReaction(postId, visitor, mine, reaction, isoNow());
+        break;
+      } catch (error) {
+        if (!(error instanceof Conflict)) throw error;
+        if (attempt >= 2) throw new HttpError(409, 'Your reaction changed at the same time. Please try again.');
+      }
+    }
+    const { counts, mine } = await store.getReactions(postId, visitor);
+    const cookies = known ? undefined : [reactions.visitorCookie(visitor, process.env.SITE_URL, process.env.ROOT_DOMAIN)];
+    return json(200, { counts: reactions.toCounts(counts), mine }, cookies);
+  }
+
   async function api(method, parts, event) {
     const path = `/api/${parts.join('/')}`;
     if (parts.length === 1 && parts[0] === 'me' && method === 'GET') {
@@ -177,6 +223,7 @@ function createHandler(deps = {}) {
       }
     }
     if (parts[0] === 'tokens') return tokensApi(method, parts, event, await authenticate(event, method, path));
+    if (parts[0] === 'reactions') return reactionsApi(method, parts, event);
     if (parts[0] !== 'posts') throw new NotFound('Not found');
     const [, postId, sub, fileId] = parts;
     if (postId !== undefined && !POST_ID.test(postId)) throw new NotFound('Post not found');
@@ -237,6 +284,11 @@ function createHandler(deps = {}) {
         await store.deletePost(postId);
         await files.removePost(postId);
         await syncPublic(before, null);
+        try {
+          await store.deleteReactions(postId);
+        } catch (error) {
+          console.error(JSON.stringify({ message: 'Could not delete reactions', postId, error: error.message }));
+        }
         return json(200, { deleted: postId });
       }
     }

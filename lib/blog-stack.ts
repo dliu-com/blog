@@ -38,8 +38,9 @@ export interface BlogStackProps extends StackProps {
 /**
  * Serverless blog: nothing runs while nobody writes.
  * Readers get static files from CloudFront (the app from SiteBucket, published posts as JSON and
- * media from ContentBucket). Only authors call the Lambda API, which saves posts in DynamoDB and
- * rewrites the public JSON when a post is published, changed or removed.
+ * media from ContentBucket). Authors call the Lambda API, which saves posts in DynamoDB and
+ * rewrites the public JSON when a post is published, changed or removed. Readers only reach it for
+ * reactions and (cached) post-page link previews.
  */
 export class BlogStack extends Stack {
   constructor(scope: Construct, id: string, props: BlogStackProps = {}) {
@@ -70,6 +71,17 @@ export class BlogStack extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
+    // Readers' reactions: per post a counts item and one item per visitor (dl_vid); per IP hash,
+    // rate-limit windows that expire through TTL.
+    const reactionsTable = new dynamodb.TableV2(this, 'Reactions', {
+      partitionKey: { name: 'pk', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'sk', type: dynamodb.AttributeType.STRING },
+      billing: dynamodb.Billing.onDemand(),
+      timeToLiveAttribute: 'ttl',
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
+      removalPolicy: RemovalPolicy.RETAIN,
+    });
+
     // Published JSON (content/), post media (media/) and uploads in progress (pending/).
     // Private: readers get content/ and media/ through CloudFront; authors upload with presigned URLs.
     const contentBucket = new s3.Bucket(this, 'ContentBucket', {
@@ -90,7 +102,7 @@ export class BlogStack extends Stack {
       ],
     });
 
-    // ---------- API (authors only) ----------
+    // ---------- API (authors, post pages and reactions) ----------
     const apiHandler = new lambda.Function(this, 'ApiHandler', {
       runtime: lambda.Runtime.NODEJS_22_X,
       handler: 'index.handler',
@@ -105,6 +117,7 @@ export class BlogStack extends Stack {
         ROOT_DOMAIN: rootDomain,
         TABLE_NAME: table.tableName,
         TOKENS_TABLE: tokensTable.tableName,
+        REACTIONS_TABLE: reactionsTable.tableName,
         CONTENT_BUCKET: contentBucket.bucketName,
         PARAMETER_PREFIX,
       },
@@ -115,6 +128,7 @@ export class BlogStack extends Stack {
     });
     table.grantReadWriteData(apiHandler);
     tokensTable.grantReadWriteData(apiHandler);
+    reactionsTable.grantReadWriteData(apiHandler);
     contentBucket.grantReadWrite(apiHandler);
     contentBucket.grantDelete(apiHandler);
     apiHandler.addToRolePolicy(new iam.PolicyStatement({

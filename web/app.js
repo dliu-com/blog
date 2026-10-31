@@ -1,7 +1,7 @@
 'use strict';
 
 // Public pages read static JSON (/content/index.json, /content/posts/<id>.json) straight from CloudFront.
-// Only the admin pages (/admin…) and signed-in authors call the API.
+// Only the admin pages (/admin…), signed-in authors and reactions call the API.
 (() => {
   const SITE_TITLE = 'DL blog';
   const MAX_FILE_BYTES = 100 * 1024 * 1024;
@@ -177,6 +177,71 @@
     page(el('div', { class: 'empty' }, [el('h1', { text: 'Page not found' }), el('p', {}, el('a', { href: '/', text: 'See all posts' }))]));
   }
 
+  // Facebook-style reactions: one per visitor (the dl_vid cookie); clicking yours again removes it.
+  const REACTIONS = [
+    { id: 'like', emoji: '👍', label: 'Like', mine: 'You liked this post' },
+    { id: 'love', emoji: '❤️', label: 'Love', mine: 'You loved this post' },
+    { id: 'haha', emoji: '😂', label: 'Haha', mine: 'You found this post funny' },
+    { id: 'sad', emoji: '😢', label: 'Sad', mine: 'This post made you sad' },
+  ];
+
+  // Hidden until the counts arrive, so a failure leaves the post as it was.
+  function reactionBar(postId) {
+    const state = { counts: {}, mine: null };
+    let busy = false;
+    const status = el('p', { class: 'reaction-status', role: 'status' });
+    const buttons = REACTIONS.map((choice) => {
+      const count = el('span', { class: 'count' });
+      const button = el('button', { type: 'button', class: 'reaction', onclick: () => choose(choice.id) }, [
+        el('span', { class: 'emoji', 'aria-hidden': 'true', text: choice.emoji }), el('span', { class: 'label', text: choice.label }), count,
+      ]);
+      return { choice, button, count };
+    });
+    const section = el('section', { class: 'reactions', 'aria-label': 'Reactions', hidden: true }, [
+      el('div', { class: 'reaction-buttons' }, buttons.map((item) => item.button)), status,
+    ]);
+
+    function draw(error) {
+      for (const { choice, button, count } of buttons) {
+        const n = state.counts[choice.id] || 0;
+        const pressed = state.mine === choice.id;
+        count.textContent = n ? String(n) : '';
+        button.setAttribute('aria-pressed', String(pressed));
+        button.title = pressed ? `${choice.label} (click again to remove)` : choice.label;
+      }
+      const mine = REACTIONS.find((choice) => choice.id === state.mine);
+      status.textContent = error || (mine ? mine.mine : '');
+      status.classList.toggle('error', Boolean(error));
+    }
+
+    async function choose(id) {
+      if (busy) return;
+      const before = { counts: { ...state.counts }, mine: state.mine };
+      const next = state.mine === id ? null : id;
+      if (state.mine) state.counts[state.mine] = Math.max(0, (state.counts[state.mine] || 0) - 1);
+      if (next) state.counts[next] = (state.counts[next] || 0) + 1;
+      state.mine = next;
+      busy = true;
+      draw();
+      try {
+        Object.assign(state, await api('POST', `/api/reactions/${postId}`, { reaction: next }));
+        draw();
+      } catch (error) {
+        Object.assign(state, before);
+        draw(error.status === 429 ? error.message : 'Your reaction could not be saved. Please try again.');
+      } finally {
+        busy = false;
+      }
+    }
+
+    api('GET', `/api/reactions/${postId}`).then((data) => {
+      Object.assign(state, data);
+      section.hidden = false;
+      draw();
+    }).catch(() => {});
+    return section;
+  }
+
   async function postPage(me, id) {
     const post = await loadJson(`/content/posts/${id}.json`);
     if (!post) return notFound(me);
@@ -201,6 +266,7 @@
           el('span', { class: 'size', text: fmtSize(file.size) }),
         ])))),
       ]) : null,
+      reactionBar(post.id),
     ]));
     return undefined;
   }

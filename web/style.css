@@ -142,6 +142,17 @@ h2.section { font-size: 15px; margin: 24px 0 8px; }
 .attachments .ext { flex: none; font-size: 11px; font-weight: 700; color: var(--accent); background: #eef3fe; border-radius: 4px; padding: 3px 6px; }
 .attachments .name { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .attachments .size { flex: none; color: var(--muted); font-size: 13px; }
+.reactions { margin-top: 32px; padding-top: 20px; border-top: 1px solid var(--line); }
+.reaction-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+button.reaction { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: 999px; font-size: 14px; color: var(--text); }
+button.reaction .emoji { font-size: 18px; line-height: 1; }
+button.reaction .count { font-variant-numeric: tabular-nums; color: var(--muted); }
+button.reaction .count:empty { display: none; }
+button.reaction[aria-pressed="true"] { border-color: var(--accent); background: #eef3fe; color: var(--accent); font-weight: 600; }
+button.reaction[aria-pressed="true"] .count { color: var(--accent); }
+.reaction-status { margin: 10px 0 0; min-height: 1.4em; color: var(--muted); font-size: 14px; }
+.reaction-status.error { color: var(--danger); }
+@media (max-width: 480px) { button.reaction .label { display: none; } }
 
 /* ---------- Editor ---------- */
 .editor-grid { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }

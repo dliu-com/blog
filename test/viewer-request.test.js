@@ -46,6 +46,13 @@ test('API tokens are copied from Authorization to x-blog-token on /api/ only', (
   expect(run('/api/posts', { 'x-blog-token': { value: 'forged' } }).headers['x-blog-token']).toBeUndefined();
 });
 
+test("the viewer's IP replaces any x-blog-viewer on the API, for the reactions rate limit", () => {
+  const forged = { 'x-blog-viewer': { value: '10.0.0.1' } };
+  const request = context.handler({ request: { uri: '/api/reactions/2026102701', headers: { ...forged }, querystring: {} }, viewer: { ip: '203.0.113.7' } });
+  expect(request.headers['x-blog-viewer']).toEqual({ value: '203.0.113.7' });
+  expect(run('/api/reactions/2026102701', { ...forged }).headers['x-blog-viewer']).toBeUndefined();
+});
+
 test('files, the API and stored content pass through', () => {
   for (const uri of ['/', '/index.html', '/app.js', '/style.css', '/api/me', '/auth/login', '/content/index.json', '/media/a/b/c.jpg', '/favicon.ico']) {
     expect(run(uri).uri).toBe(uri);

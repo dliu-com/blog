@@ -5,6 +5,8 @@
 //   with the post's link-preview tags (falling back to the plain file), and caches per ID.
 //   /<postId>/ redirects to /<postId>. A viewer can't send its own x-blog-post.
 // - /docs/api is docs-api.html (the API guide for people; agents read /docs/api.md).
+// - On /api/* and /auth/*, the viewer's IP goes in x-blog-viewer (replacing any sent) for the reactions
+//   rate limit.
 // - On /api/*, "Authorization: Bearer <token>" is copied to x-blog-token: CloudFront signs requests to the
 //   Lambda origin (origin access control) and that replaces the viewer's Authorization header.
 // - Old links keep working: /posts/<postId> → /<postId>; WordPress /2025/04/ → /?m=202504,
@@ -29,6 +31,8 @@ function handler(event) {
     match = authorization ? /^Bearer\s+(\S+)\s*$/i.exec(authorization.value) : null;
     if (match && uri.indexOf('/api/') === 0) request.headers['x-blog-token'] = { value: match[1] };
     else delete request.headers['x-blog-token'];
+    if (event.viewer && event.viewer.ip) request.headers['x-blog-viewer'] = { value: event.viewer.ip };
+    else delete request.headers['x-blog-viewer'];
     return request;
   }
   match = /^\/(\d{10})(\/?)$/.exec(uri);

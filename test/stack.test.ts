@@ -19,13 +19,27 @@ test('posts table is keyed by post id, with no index, and is protected', () => {
 });
 
 test('API tokens have their own table, with expiry by TTL', () => {
-  template.resourceCountIs('AWS::DynamoDB::GlobalTable', 2);
+  template.resourceCountIs('AWS::DynamoDB::GlobalTable', 3);
   template.hasResourceProperties('AWS::DynamoDB::GlobalTable', {
     KeySchema: [{ AttributeName: 'id', KeyType: 'HASH' }],
     TimeToLiveSpecification: { AttributeName: 'ttl', Enabled: true },
   });
   template.hasResourceProperties('AWS::Lambda::Function', {
     Environment: { Variables: Match.objectLike({ TOKENS_TABLE: Match.anyValue() }) },
+  });
+});
+
+test('reactions have their own table (post or IP, then item), kept on delete, with rate-limit windows expiring by TTL', () => {
+  template.hasResource('AWS::DynamoDB::GlobalTable', {
+    DeletionPolicy: 'Retain',
+    Properties: Match.objectLike({
+      KeySchema: [{ AttributeName: 'pk', KeyType: 'HASH' }, { AttributeName: 'sk', KeyType: 'RANGE' }],
+      BillingMode: 'PAY_PER_REQUEST',
+      TimeToLiveSpecification: { AttributeName: 'ttl', Enabled: true },
+    }),
+  });
+  template.hasResourceProperties('AWS::Lambda::Function', {
+    Environment: { Variables: Match.objectLike({ REACTIONS_TABLE: Match.anyValue() }) },
   });
 });
 

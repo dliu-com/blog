@@ -18,9 +18,9 @@ flowchart LR
   G[AI agent<br/>API token] --> CF
   CF -->|"/, /admin, /docs"| Site[(S3 site bucket<br/>index.html, docs.html, js, css)]
   CF -->|"/content/*, /media/*" OAC| Content[(S3 content bucket<br/>published JSON + files)]
-  CF -->|"/api/*, /auth/*, /yyyymmddNN" OAC| L[Lambda Function URL<br/>authors + post-page tags]
+  CF -->|"/api/*, /auth/*, /yyyymmddNN" OAC| L[Lambda Function URL<br/>authors, reactions, post-page tags]
   CF -.->|"/yyyymmddNN fallback"| Site
-  L --> DDB[(DynamoDB<br/>posts, API tokens)]
+  L --> DDB[(DynamoDB<br/>posts, API tokens, reactions)]
   L --> Content
   L --> SSM[SSM Parameter Store<br/>Entra settings]
   A -. "presigned PUT upload" .-> Content
@@ -33,7 +33,7 @@ flowchart LR
 | Site bucket | Static frontend from `web/`. |
 | Content bucket (private) | `content/index.json` (list of published posts), `content/posts/<postId>.json` (one file per published post) and `media/<postId>/<fileId>/<name>` (uploaded files). |
 | Lambda (`lambda/api`) | Authoring API, Microsoft sign-in and post pages with link-preview tags (`page.js`). Reached only through CloudFront (Function URL with IAM auth + OAC). Reserved concurrency is 10. |
-| DynamoDB | `Posts` is the source of truth for posts, drafts included (on-demand, point-in-time recovery, deletion protection). `Tokens` holds API tokens as SHA-256 hashes, with TTL. |
+| DynamoDB | `Posts` is the source of truth for posts, drafts included (on-demand, point-in-time recovery, deletion protection). `Tokens` holds API tokens as SHA-256 hashes, with TTL. `Reactions` holds per-post counts (`pk=post#<id>`, `sk=counts`), each reader's reaction (`sk=visitor#<dl_vid>`) and hashed-IP rate-limit windows (`pk=viewer#<sha256>`, TTL). |
 
 Cost at low traffic is a few cents a month for requests and storage, plus the Route 53 zone the other dliu.com apps already share. Nothing is billed per hour.
 
@@ -126,13 +126,14 @@ CDK context options:
 - `-c subdomain=blog-next` deploys to another hostname, for example to try changes before switching.
 - `-c trafficLogging=false` turns off the traffic.dliu.com integration.
 
-The DynamoDB table and the content bucket are **retained** when the stack is deleted, so posts and files survive a teardown.
+The DynamoDB tables and the content bucket are **retained** when the stack is deleted, so posts and files survive a teardown.
 
 ## Caching
 
 - The frontend files and `content/*.json` are served with `no-cache`, so CloudFront and browsers revalidate them. A published edit appears immediately.
 - Files under `/media/` are cached for a day. A replaced file gets a new ID, so its URL changes too.
 - Post pages (`/<postId>`) are `index.html` with the post's title, excerpt and first picture as Open Graph tags, so WeChat, iMessage, Slack and others show a preview card. The viewer function puts the ID in `x-blog-post`. The `20????????` behaviour asks the Lambda (an origin group) and caches the page per ID for five minutes. A 404 (not published) or a Lambda error falls back to the plain `index.html` in the site bucket. `web/share.png` is the picture for posts without one.
+- Reactions (`GET`/`POST /api/reactions/<postId>`) are never cached. The page loads them after the post, so readers call the Lambda once per post view; if it fails, the buttons stay hidden.
 - Publishing, editing or unpublishing a post rewrites `content/posts/<postId>.json`. It also rebuilds `content/index.json` from DynamoDB.
 
 ## Routes and old links
@@ -153,7 +154,8 @@ The DynamoDB table and the content bucket are **retained** when the stack is del
 ## Security
 
 - **Network access:** the Lambda Function URL and both buckets accept requests only from this CloudFront distribution, via OAC. Because of this, the browser signs every write request body with the `x-amz-content-sha256` header.
-- **Writes:** every write needs either a signed-in session cookie and an `Origin` header equal to the site URL, or a valid API token. Tokens are 256-bit secrets stored only as hashes, expire, can be revoked, and can't delete posts or manage tokens.
+- **Reactions:** anyone can react to a published post, keyed by the traffic monitor's `dl_vid` cookie. The `POST` must be same-origin JSON and is limited to 60 an hour per IP. The viewer function sets `x-blog-viewer` from CloudFront's viewer IP, so clients can't spoof it, and the IP is stored only hashed, for two hours.
+- **Writes:** every other write needs either a signed-in session cookie and an `Origin` header equal to the site URL, or a valid API token. Tokens are 256-bit secrets stored only as hashes, expire, can be revoked, and can't delete posts or manage tokens.
 - **Threat model:** see the Security tab at `/docs#security`.
 - **Sign-in session:** the session is a signed, HTTP-only `__Host-` cookie. The short-lived sign-in cookie is signed with a different key and carries a different `typ`, so it can't be replayed as a session.
 - **Rendering:** Markdown is rendered on the client with a strict allow-list. Raw HTML and `javascript:` URLs are dropped. A video.dliu.com link on its own line (or its pasted embed code) becomes the player; the iframe is rebuilt from the video ID and the CSP allows frames only from video.dliu.com.
