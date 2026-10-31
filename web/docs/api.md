@@ -256,6 +256,8 @@ def upload(post_id, path, mime_type):
 
 The body is Markdown. Supported: `#` headings, paragraphs, line breaks, `**bold**`, `*italic*`, `~~strike~~`, `` `code` ``, fenced code blocks, `>` quotes, `-` and `1.` lists (nest by indenting), `---` rules, `[links](https://...)`, `![pictures](/media/...)` and bare https:// links.
 
+Videos: put a video link from https://video.dliu.com on a line by itself to show the player, for example `https://video.dliu.com/2025010100` (also `/watch?v=ID`, `/embed/ID`, or `[Title](https://video.dliu.com/ID)` to set the player title). The embed code copied from a video page works too. Player options: `?t=SECONDS` (start time), `autoplay=1` (starts muted), `muted=1`, `loop=1`. Videos from other sites are shown as links.
+
 Not supported: raw HTML (shown as text) and tables. Links must be https://, http://, mailto: or start with `/`.
 
 The title is plain text; don't repeat it as a `#` heading at the top of the body.

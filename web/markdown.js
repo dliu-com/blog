@@ -3,6 +3,7 @@
 // A small, safe Markdown renderer. It builds DOM nodes (never HTML strings), so nothing in a post can run script.
 // Supported: headings, paragraphs, line breaks, **bold**, *italic*, ~~strike~~, `code`, fenced code blocks,
 // > quotes, - and 1. lists (nested by indenting), --- rules, [links](url), ![images](url) and bare https:// links.
+// A line holding only a video.dliu.com link, or the embed code copied from a video page, becomes the video player.
 (function (root) {
   const FENCE = /^\s{0,3}(`{3,}|~{3,})\s*([\w+#.-]*)\s*$/;
   const HEADING = /^\s{0,3}(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
@@ -10,6 +11,38 @@
   const QUOTE = /^\s{0,3}>\s?/;
   const LIST = /^(\s*)([-*+]|\d{1,9}[.)])\s+/;
   const blank = (line) => /^\s*$/.test(line);
+  const VIDEO_ORIGIN = 'https://video.dliu.com';
+  const VIDEO_URL = /^<?https:\/\/video\.dliu\.com\/(?:embed\/|watch\?v=)?([0-9]{10})(?:[?&]([^\s<>]*))?>?$/i;
+  const VIDEO_IFRAME = /^<iframe\s[^>]*\bsrc\s*=\s*["']https:\/\/video\.dliu\.com\/embed\/([0-9]{10})(?:\?([^"'<>]*))?["'][^>]*>\s*<\/iframe>$/i;
+
+  // Only the player options the video site knows, rebuilt from checked values; anything else is dropped.
+  function videoOptions(query) {
+    const params = new URLSearchParams(String(query || '').replace(/&amp;/g, '&'));
+    const out = new URLSearchParams();
+    const start = params.get('t') || params.get('start');
+    if (start && /^[0-9]{1,6}(\.[0-9]{1,3})?$/.test(start) && Number(start) > 0) out.set('t', start);
+    for (const name of ['autoplay', 'muted', 'loop']) if (params.get(name) === '1') out.set(name, '1');
+    return out.toString();
+  }
+
+  // A video.dliu.com watch, short or embed link, alone or as [label](url), or the pasted <iframe> embed code.
+  function parseVideo(line) {
+    const text = line.trim();
+    const iframe = VIDEO_IFRAME.exec(text);
+    if (iframe) {
+      const ratio = /aspect-ratio\s*:\s*([0-9]{1,5})\s*\/\s*([0-9]{1,5})/i.exec(text);
+      const title = /\btitle\s*=\s*"([^"]{1,200})"/i.exec(text);
+      return {
+        type: 'video', id: iframe[1], options: videoOptions(iframe[2]),
+        ratio: ratio && Number(ratio[1]) > 0 && Number(ratio[2]) > 0 ? `${ratio[1]} / ${ratio[2]}` : null,
+        title: title ? title[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'").replace(/&amp;/g, '&') : '',
+      };
+    }
+    const link = /^\[([^\]]*)\]\(\s*(\S+?)\s*\)$/.exec(text);
+    const url = VIDEO_URL.exec(link ? link[2] : text);
+    if (!url) return null;
+    return { type: 'video', id: url[1], options: videoOptions(url[2]), ratio: null, title: link ? link[1] : '' };
+  }
   const startsBlock = (line) => FENCE.test(line) || HEADING.test(line) || RULE.test(line) || QUOTE.test(line) || LIST.test(line);
 
   function parseList(lines, start) {
@@ -85,6 +118,9 @@
           i += 1;
         }
         blocks.push({ type: 'quote', children: parseBlocks(body.join('\n')) });
+      } else if ((match = parseVideo(line)) && (i + 1 >= lines.length || blank(lines[i + 1]) || startsBlock(lines[i + 1]))) {
+        blocks.push(match);
+        i += 1;
       } else if (LIST.test(line)) {
         const { block, next } = parseList(lines, i);
         blocks.push(block);
@@ -281,6 +317,21 @@
         case 'heading': el = doc.createElement(`h${block.level}`); el.append(renderInline(block.children, doc)); break;
         case 'paragraph': el = doc.createElement('p'); el.append(renderInline(block.children, doc)); break;
         case 'rule': el = doc.createElement('hr'); break;
+        case 'video': {
+          el = doc.createElement('div');
+          el.setAttribute('class', 'video');
+          const frame = doc.createElement('iframe');
+          frame.setAttribute('src', `${VIDEO_ORIGIN}/embed/${block.id}${block.options ? `?${block.options}` : ''}`);
+          frame.setAttribute('title', block.title || 'Video');
+          frame.setAttribute('allow', 'autoplay; fullscreen; picture-in-picture');
+          frame.setAttribute('allowfullscreen', '');
+          frame.setAttribute('loading', 'lazy');
+          frame.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+          // Set through the style object, which the CSP allows (a style attribute would be blocked).
+          if (block.ratio && frame.style) frame.style.aspectRatio = block.ratio;
+          el.append(frame);
+          break;
+        }
         case 'quote': el = doc.createElement('blockquote'); el.append(renderBlocks(block.children, doc)); break;
         case 'code': {
           el = doc.createElement('pre');

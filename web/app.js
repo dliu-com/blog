@@ -397,7 +397,7 @@
 
     const notices = el('div');
     const title = el('input', { type: 'text', class: 'title-input', id: 'title', value: post.title, placeholder: 'Title', 'aria-label': 'Title', maxlength: '200' });
-    const body = el('textarea', { id: 'body', 'aria-label': 'Post text (Markdown)', placeholder: 'Write your post in Markdown…\n\nDrop or paste pictures here.' });
+    const body = el('textarea', { id: 'body', 'aria-label': 'Post text (Markdown)', placeholder: 'Write your post in Markdown…\n\nDrop or paste pictures here. Put a video.dliu.com link on its own line to show the video.' });
     body.value = post.body;
     const preview = el('div', { class: 'preview prose', hidden: true });
     const wordCount = el('span');

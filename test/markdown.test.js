@@ -62,3 +62,45 @@ test('only safe URLs become links and images', () => {
   }
   expect(md.safeUrl('mailto:user@example.com', { image: true })).toBeNull();
 });
+
+describe('videos from video.dliu.com', () => {
+  const frame = (src, title = 'Video') => `<div class="video"><iframe src="${src}" title="${title}" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen="" loading="lazy" referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`;
+  const embed = 'https://video.dliu.com/embed/2025010100';
+
+  test('a video link on its own line becomes the player', () => {
+    for (const link of ['https://video.dliu.com/2025010100', 'https://video.dliu.com/watch?v=2025010100', embed, '<https://video.dliu.com/2025010100>']) {
+      expect(render(link)).toBe(frame(embed));
+    }
+    expect(render('Intro\n\n[Our trip](https://video.dliu.com/2025010100)\n\nAfter')).toBe(
+      `<p>Intro</p>${frame(embed, 'Our trip')}<p>After</p>`,
+    );
+  });
+
+  test('the embed code copied from a video page becomes the player', () => {
+    const code = '<iframe src="https://video.dliu.com/embed/2025010100?t=42&amp;muted=1" title="A &quot;day&quot; out" style="width:100%;aspect-ratio:9/16;border:0" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen loading="lazy"></iframe>';
+    const el = md.render(code, doc);
+    expect(el.html()).toBe(frame(`${embed}?t=42&amp;muted=1`, 'A &quot;day&quot; out'));
+  });
+
+  test('only known player options with safe values are kept', () => {
+    expect(render('https://video.dliu.com/2025010100?t=90&autoplay=1&loop=1&evil=x')).toBe(frame(`${embed}?t=90&amp;autoplay=1&amp;loop=1`));
+    expect(render('https://video.dliu.com/watch?v=2025010100&t=1e9')).toBe(frame(embed));
+    expect(render('https://video.dliu.com/2025010100?autoplay=true')).toBe(frame(embed));
+  });
+
+  test('other sites, bad ids and links inside text are not embedded', () => {
+    for (const text of [
+      'https://video.dliu.com.evil.example/2025010100',
+      'https://evil.example/embed/2025010100',
+      'http://video.dliu.com/2025010100',
+      'https://video.dliu.com/123',
+      'https://video.dliu.com/2025010100/../../x',
+      'See https://video.dliu.com/2025010100 here',
+      '<iframe src="https://evil.example/embed/2025010100"></iframe>',
+      '<iframe src="https://video.dliu.com/embed/2025010100" onload="alert(1)"></iframe><script>x</script>',
+    ]) {
+      expect(render(text)).not.toContain('<iframe');
+    }
+    expect(render('https://video.dliu.com/2025010100\nmore text')).not.toContain('<iframe');
+  });
+});

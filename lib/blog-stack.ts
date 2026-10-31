@@ -147,12 +147,13 @@ export class BlogStack extends Stack {
     const headers = new cloudfront.ResponseHeadersPolicy(this, 'SiteHeaders', {
       securityHeadersBehavior: {
         contentSecurityPolicy: {
-          // Uploads go straight to the content bucket; posts may show pictures from other https sites.
+          // Uploads go straight to the content bucket; posts may show pictures from other https sites
+          // and videos from video.dliu.com.
           contentSecurityPolicy: Fn.join('', [
             "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; ",
             "img-src 'self' data: blob: https:; media-src 'self' blob:; ",
             "connect-src 'self' https://", contentBucket.bucketRegionalDomainName, '; ',
-            "frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+            "frame-src https://video.dliu.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
           ]),
           override: true,
         },

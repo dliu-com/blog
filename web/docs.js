@@ -281,8 +281,8 @@ function security(root) {
     ['Buckets', 'Block all public access, S3-managed encryption, HTTPS only'],
     ['Uploads', 'Presigned PUT URLs valid 15 minutes, fixed size and type, at most 100 MB a file and 100 files a post'],
     ['File types', 'Only pictures, PDF, plain text, audio and video open in the browser; anything else (including HTML and SVG) downloads'],
-    ['Post text', 'Markdown is rendered without raw HTML; links and pictures must be http(s), mailto or same-site'],
-    ['Headers', 'Content-Security-Policy (scripts and styles from the site only), HSTS, X-Frame-Options DENY, nosniff, strict referrer'],
+    ['Post text', 'Markdown is rendered without raw HTML; links and pictures must be http(s), mailto or same-site; videos only from video.dliu.com, rebuilt from the video ID'],
+    ['Headers', 'Content-Security-Policy (scripts and styles from the site only, frames from video.dliu.com only), HSTS, X-Frame-Options DENY, nosniff, strict referrer'],
     ['Data', 'DynamoDB with deletion protection, point-in-time recovery and retain-on-delete'],
     ['Lambda', 'Reserved concurrency of 10 caps runaway cost; logs kept one month'],
   ]));
@@ -304,6 +304,7 @@ function security(root) {
     ['Sign-in is tampered with: forged callback, stolen code or open redirect', LOW, 'state, nonce and PKCE; ID token signature, issuer, tenant and audience checked; return paths must be on this site'],
     ['A post or upload runs script in readers’ browsers (stored XSS)', LOW, 'Markdown rendered with DOM methods and no raw HTML; safe link schemes only; CSP allows scripts from the site only; HTML and SVG uploads download instead of opening'],
     ['An agent puts a picture from another site in a post to track readers', LOW, 'Pictures may come from any https address, so that site sees readers’ IP addresses; review agent posts before publishing'],
+    ['A post embeds a player that misbehaves or loads another site', LOW, 'Only video.dliu.com, the owner’s own site, can be framed (CSP frame-src). The player address is rebuilt from a 10-digit video ID and a few checked options; nothing else from a pasted embed code is used'],
     ['The tokens page is framed to trick the author into clicking (clickjacking)', LOW, 'X-Frame-Options DENY and CSP frame-ancestors none'],
     ['Someone calls the Lambda URL or the buckets directly', LOW, 'Origin access control: they accept only requests signed by this CloudFront distribution'],
     ['A flood of API requests runs up the bill', LOW, 'Reserved concurrency of 10; a wrong token costs one DynamoDB read; readers never call the API'],
