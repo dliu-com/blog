@@ -14,6 +14,22 @@ const SHARE_BLOCK = /<!-- share -->[\s\S]*?<!-- \/share -->/;
 const escapeHtml = (text) => String(text).replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 // Control characters and runs of spaces don't belong in a preview.
 const clean = (text) => String(text || '').replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim();
+const SHARE_DESCRIPTION_MAX = 120;
+
+// Link cards show two or three lines, so the preview text is the excerpt cut at the last sentence end that
+// fits (Chinese or English punctuation), else at a space, else hard, with an ellipsis when shortened.
+function shareDescription(text, max = SHARE_DESCRIPTION_MAX) {
+  const chars = [...clean(text)];
+  if (chars.length <= max) return chars.join('');
+  const head = chars.slice(0, max).join('');
+  const sentence = Math.max(...['。', '！', '？', '. ', '! ', '? '].map((end) => {
+    const at = head.lastIndexOf(end);
+    return at < 0 ? -1 : at + end.trimEnd().length;
+  }));
+  if (sentence >= max / 3) return head.slice(0, sentence).trim();
+  const space = head.lastIndexOf(' ');
+  return `${(space >= max / 2 ? head.slice(0, space) : chars.slice(0, max - 1).join('')).trim()}…`;
+}
 
 function shareTags({ title, description, url, image, type = 'website', publishedAt, updatedAt }) {
   const tags = [
@@ -44,7 +60,7 @@ function imageOf(post, siteUrl) {
 function renderPostPage(template, post, siteUrl) {
   if (!SHARE_BLOCK.test(template)) throw new Error('index.html has no <!-- share --> block');
   const title = clean(post.title) || 'Untitled';
-  const description = clean(post.excerpt) || `${title} · ${SITE_TITLE}`;
+  const description = shareDescription(post.excerpt) || `${title} · ${SITE_TITLE}`;
   const image = imageOf(post, siteUrl);
   const tags = shareTags({
     title,
@@ -79,4 +95,4 @@ function createTemplateLoader({ bucket = process.env.SITE_BUCKET, client, now = 
   };
 }
 
-module.exports = { SHARE_IMAGE, createTemplateLoader, renderPostPage, shareTags };
+module.exports = { SHARE_IMAGE, createTemplateLoader, renderPostPage, shareDescription, shareTags };

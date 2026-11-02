@@ -381,6 +381,17 @@ describe('post pages with link-preview tags', () => {
     expect((await page('2026102701', 'HEAD')).body).toBe('');
   });
 
+  test('the preview text is short: cut at a sentence end that fits, else at a space with an ellipsis', () => {
+    const { shareDescription } = require('../lambda/api/page');
+    expect(shareDescription('Short.')).toBe('Short.');
+    const zh = '小黄和小花是Hujia养的两只荷兰猪，也叫豚鼠——一种小型食草宠物，并不是猪。我们平时亲切地叫它们“猪猪”。 它们都出生于2021年，分别于2026年10月24日、30日离世。10月31日，我们几位朋友在北爱尔兰贝尔法斯特附近的Divis山间，给它们办了一场小小的告别礼。';
+    expect(shareDescription(zh)).toBe('小黄和小花是Hujia养的两只荷兰猪，也叫豚鼠——一种小型食草宠物，并不是猪。我们平时亲切地叫它们“猪猪”。 它们都出生于2021年，分别于2026年10月24日、30日离世。');
+    const en = `${'word '.repeat(40)}end`;
+    expect(shareDescription(en)).toMatch(/^(word ){0,23}word…$/);
+    expect([...shareDescription(en)].length).toBeLessThanOrEqual(120);
+    expect([...shareDescription('字'.repeat(300))]).toHaveLength(120);
+  });
+
   test('without a picture the site picture is used', async () => {
     const { store, page } = pageSetup();
     await store.putPost({ id: '2026102702', status: 'published', title: 'Notes', excerpt: '', cover: 'javascript:alert(1)' }, { create: true });
