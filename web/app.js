@@ -584,7 +584,7 @@
       const url = prompt(t('链接地址', 'Link URL'), 'https://');
       if (url && url !== 'https://') wrap('[', `](${url})`, t('链接文字', 'link text'));
     }
-    const tool = (label, name, action, cls) => el('button', { type: 'button', class: cls, title: name, 'aria-label': name, text: label, onclick: action });
+    const tool = (label, name, action, cls) => el('button', { type: 'button', class: `dl-button dl-button-quiet dl-button-small${cls ? ` ${cls}` : ''}`, title: name, 'aria-label': name, text: label, onclick: action });
 
     function renderPreview() {
       preview.replaceChildren(el('h1', { text: untitled(title.value) }), md.render(body.value));
@@ -665,7 +665,7 @@
           title,
           permalink,
           el('div', { class: 'editor' }, [
-            el('div', { class: 'editor-bar' }, [toolbar, el('div', { class: 'dl-segmented', role: 'tablist' }, [writeTab, previewTab]), mediaInput]),
+            el('div', { class: 'editor-bar' }, [toolbar, el('div', { class: 'dl-segmented dl-segmented-small', role: 'tablist' }, [writeTab, previewTab]), mediaInput]),
             body,
             preview,
             el('div', { class: 'editor-status' }, [wordCount, savedAt]),

@@ -15,7 +15,6 @@ textarea { resize: vertical; }
 
 .dl-panel + .dl-panel { margin-top: 16px; }
 .dl-panel h2 { margin: 0 0 12px; font-size: 15px; }
-.dl-button.dl-button-link.dl-button-danger { color: var(--dl-danger); }
 .empty { text-align: center; padding: 80px 20px; color: var(--dl-muted); }
 .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--dl-panel); border: 1px solid var(--dl-line); color: var(--dl-muted); }
 .pill.published { background: #eef9f1; border-color: #b7e1c1; color: var(--dl-ok); }
@@ -87,13 +86,8 @@ textarea { resize: vertical; }
 .permalink input { width: 14rem; padding: 4px 8px; font-size: 13px; }
 .editor { border: 1px solid var(--dl-line); border-radius: var(--dl-radius); overflow: hidden; background: var(--dl-surface); }
 .editor-bar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 6px; padding: 6px 8px; background: var(--dl-panel); border-bottom: 1px solid var(--dl-line); }
-.editor-bar .dl-segmented > button { padding: 5px 12px; font-size: 13px; }
 .toolbar { display: flex; flex-wrap: wrap; gap: 2px; }
-.toolbar > button {
-  min-width: 30px; height: 30px; padding: 0 7px; border: 1px solid transparent; border-radius: var(--dl-radius-small);
-  background: none; color: var(--dl-text); font: inherit; font-size: 13px; cursor: pointer;
-}
-.toolbar > button:hover { border-color: var(--dl-line); background: var(--dl-surface); }
+.toolbar > .dl-button { min-width: 30px; padding: 5px 7px; }
 .toolbar .b { font-weight: 700; }
 .toolbar .i { font-style: italic; }
 #body { display: block; min-height: 460px; border: 0; border-radius: 0; padding: 14px; font: 15px/1.6 var(--dl-mono); }
@@ -132,8 +126,4 @@ textarea { resize: vertical; }
   .posts li { flex-direction: column; gap: 2px; }
   .posts.admin li { flex-direction: row; }
   #body, .editor .preview { min-height: 320px; }
-}
-/* Touch screens: bigger targets in the editor */
-@media (pointer: coarse) {
-  .toolbar > button, .dl-segmented[role=tablist] > button { min-height: 36px; }
 }

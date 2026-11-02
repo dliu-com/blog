@@ -69,3 +69,12 @@ test('the blog stylesheet leaves the header, buttons, switcher and palette to th
   expect(css).not.toMatch(/header\.top|\.brand|^\s*button|\.button\b|\.languages?\b|--accent:|^\s*:root/m);
   expect(css).not.toMatch(/var\(--(bg|panel|panel-2|line|text|muted|accent|accent-2|danger|ok|radius)\)/);
 });
+
+test('the editor uses the kit\'s quiet small buttons and small segmented tabs instead of local copies', () => {
+  const app = read('web/app.js');
+  const css = read('web/style.css');
+  expect(app).toContain("class: `dl-button dl-button-quiet dl-button-small${cls ? ` ${cls}` : ''}`");
+  expect(app).toContain("class: 'dl-segmented dl-segmented-small', role: 'tablist'");
+  expect(css).not.toMatch(/\.toolbar > button|\.dl-segmented[^{]*>\s*button|dl-button-link\.dl-button-danger/);
+  expect(read('web/diagram.js')).not.toContain('#2563eb');
+});
