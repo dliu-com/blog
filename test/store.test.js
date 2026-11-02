@@ -44,6 +44,24 @@ describe('reactions in DynamoDB', () => {
     expect(client.sent[1].input.TransactItems[1].Update.UpdateExpression).toBe('ADD #from :down');
   });
 
+  test('who reacted: one paged query of the post\'s visitor items, never the counts', async () => {
+    const pages = [
+      { Items: [{ sk: 'visitor#abc12345', reaction: 'like', updatedAt: 't1' }], LastEvaluatedKey: { pk: 'p', sk: 's' } },
+      { Items: [{ sk: 'visitor#def67890', reaction: 'sad' }] },
+    ];
+    const sent = [];
+    const client = { async send(command) { sent.push(command.input); return pages.shift(); } };
+    expect(await createStore({ client, reactionsTable: 'R' }).listReactionVisitors('2026102701')).toEqual([
+      { visitor: 'abc12345', reaction: 'like', updatedAt: 't1' },
+      { visitor: 'def67890', reaction: 'sad', updatedAt: null },
+    ]);
+    expect(sent[0]).toMatchObject({
+      TableName: 'R', KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+      ExpressionAttributeValues: { ':pk': 'post#2026102701', ':prefix': 'visitor#' },
+    });
+    expect(sent[1].ExclusiveStartKey).toEqual({ pk: 'p', sk: 's' });
+  });
+
   test('a cancelled transaction is a conflict; a full rate-limit window says no', async () => {
     await expect(createStore({ client: fakeClient('TransactionCanceledException'), reactionsTable: 'R' }).setReaction('2026102701', 'abc12345', null, 'like', 'now'))
       .rejects.toBeInstanceOf(Conflict);

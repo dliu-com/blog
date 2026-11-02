@@ -1,0 +1,11 @@
+{
+  "GET /api/me": { "scope": "blog.read" },
+  "GET /api/posts": { "scope": "blog.read" },
+  "GET /api/posts/{postId}": { "scope": "blog.read" },
+  "POST /api/posts": { "scope": "blog.write" },
+  "PUT /api/posts/{postId}": { "scope": "blog.write" },
+  "POST /api/posts/{postId}/files": { "scope": "blog.write" },
+  "PUT /api/posts/{postId}/files/{fileId}": { "scope": "blog.write" },
+  "DELETE /api/posts/{postId}": { "scope": "blog.delete" },
+  "DELETE /api/posts/{postId}/files/{fileId}": { "scope": "blog.delete" }
+}

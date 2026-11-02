@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/docs.css">
   <script type="module" src="/docs.js"></script>
+  <script src="https://traffic.dliu.com/t/s.js" async></script>
 </head>
 <body>
   <header class="top">
@@ -24,7 +25,7 @@
     </nav>
     <article id="architecture" class="docs">
       <h2>How it works</h2>
-      <p class="lead">blog.dliu.com is a blog that anyone can read and only the owner (or an agent with the owner’s API token) can write. There are no servers: published posts are plain files in S3, CloudFront delivers them, and one small Lambda function runs only when the owner signs in, saves a post or uploads a file.</p>
+      <p class="lead">blog.dliu.com is a blog that anyone can read and only the owner (or an agent with the owner’s Microsoft access token) can write. There are no servers: published posts are plain files in S3, CloudFront delivers them, and one small Lambda function runs only when the owner signs in, saves a post or uploads a file.</p>
       <noscript><p>The diagrams on this page need JavaScript.</p></noscript>
     </article>
     <article id="cost" class="docs" hidden>
@@ -33,7 +34,7 @@
     </article>
     <article id="security" class="docs" hidden>
       <h2>Security</h2>
-      <p class="lead">Anyone can read published posts; only the owner, signed in with Microsoft, can write, publish or delete, and can let an AI agent write with a revocable API token. Draft text never leaves the database.</p>
+      <p class="lead">Anyone can read published posts; only the owner, signed in with Microsoft, can write, publish or delete, and can let an AI agent write through the Microsoft API with a short-lived Microsoft access token. Draft text never leaves the database.</p>
     </article>
   </main>
   <footer class="bottom"><a href="https://dliu.com">dliu.com</a> · <a href="/">DL blog</a></footer>

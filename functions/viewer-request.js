@@ -7,8 +7,8 @@
 // - /docs/api is docs-api.html (the API guide for people; agents read /docs/api.md).
 // - On /api/* and /auth/*, the viewer's IP goes in x-blog-viewer (replacing any sent) for the reactions
 //   rate limit.
-// - On /api/*, "Authorization: Bearer <token>" is copied to x-blog-token: CloudFront signs requests to the
-//   Lambda origin (origin access control) and that replaces the viewer's Authorization header.
+// - Bearer tokens are not accepted here (CloudFront's origin access control replaces Authorization anyway);
+//   the Microsoft API is a separate API Gateway endpoint (see /docs/api).
 // - Old links keep working: /posts/<postId> → /<postId>; WordPress /2025/04/ → /?m=202504,
 //   /page/2/ and /<slug>/ → / (one list, no slugs), /wp-admin and /wp-login.php → /admin.
 var RESERVED = { api: true, auth: true, content: true, media: true };
@@ -27,10 +27,6 @@ function handler(event) {
   var match;
   delete request.headers['x-blog-post'];
   if (uri.indexOf('/api/') === 0 || uri.indexOf('/auth/') === 0) {
-    var authorization = request.headers.authorization;
-    match = authorization ? /^Bearer\s+(\S+)\s*$/i.exec(authorization.value) : null;
-    if (match && uri.indexOf('/api/') === 0) request.headers['x-blog-token'] = { value: match[1] };
-    else delete request.headers['x-blog-token'];
     if (event.viewer && event.viewer.ip) request.headers['x-blog-viewer'] = { value: event.viewer.ip };
     else delete request.headers['x-blog-viewer'];
     return request;

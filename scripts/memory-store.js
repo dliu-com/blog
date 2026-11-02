@@ -5,8 +5,7 @@ const { Conflict, Exists, SUMMARY_FIELDS } = require('../lambda/api/store');
 
 function createMemoryStore() {
   const posts = new Map();
-  const tokens = new Map();
-  // post ID -> { counts: {}, visitors: Map(visitor -> reaction) }; viewer windows -> request count.
+  // post ID -> { counts: {}, visitors: Map(visitor -> reaction), times: Map(visitor -> updatedAt) }; viewer windows -> request count.
   const reactions = new Map();
   const windows = new Map();
   const clone = (value) => (value == null ? value : structuredClone(value));
@@ -14,26 +13,8 @@ function createMemoryStore() {
 
   return {
     posts,
-    tokens,
     reactions,
     windows,
-    async listTokens() {
-      return [...tokens.values()].map(clone);
-    },
-    async getToken(id) {
-      return clone(tokens.get(id) || null);
-    },
-    async putToken(item) {
-      if (tokens.has(item.id)) throw new Exists(`Token ${item.id} already exists`);
-      tokens.set(item.id, clone(item));
-      return item;
-    },
-    async touchToken(id, lastUsedAt) {
-      if (tokens.has(id)) tokens.get(id).lastUsedAt = lastUsedAt;
-    },
-    async deleteToken(id) {
-      return tokens.delete(id);
-    },
     async listPosts() {
       return [...posts.values()].map(pick);
     },
@@ -52,15 +33,22 @@ function createMemoryStore() {
       const entry = reactions.get(postId);
       return { counts: clone(entry ? entry.counts : {}), mine: (entry && visitor && entry.visitors.get(visitor)) || null };
     },
-    async setReaction(postId, visitor, from, to) {
-      if (!reactions.has(postId)) reactions.set(postId, { counts: {}, visitors: new Map() });
+    async listReactionVisitors(postId) {
+      const entry = reactions.get(postId);
+      if (!entry) return [];
+      return [...entry.visitors].map(([visitor, reaction]) => ({ visitor, reaction, updatedAt: entry.times.get(visitor) || null }));
+    },
+    async setReaction(postId, visitor, from, to, at) {
+      if (!reactions.has(postId)) reactions.set(postId, { counts: {}, visitors: new Map(), times: new Map() });
       const entry = reactions.get(postId);
       if ((entry.visitors.get(visitor) || null) !== from) throw new Conflict('Reaction changed meanwhile');
       if (to) {
         entry.visitors.set(visitor, to);
+        entry.times.set(visitor, at || null);
         entry.counts[to] = (entry.counts[to] || 0) + 1;
       } else {
         entry.visitors.delete(visitor);
+        entry.times.delete(visitor);
       }
       if (from) entry.counts[from] = (entry.counts[from] || 0) - 1;
     },

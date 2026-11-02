@@ -4,7 +4,8 @@ const auth = require('./auth');
 const { loadConfig, NotConfigured } = require('./config');
 const { createFiles, mediaKey, mediaUrl, servedType } = require('./s3');
 const { createStore, Conflict, Exists, NotFound, TooLarge } = require('./store');
-const tokens = require('./tokens');
+const apiAccess = require('./api-access');
+const ROUTES = require('./routes.json');
 const reactions = require('./reactions');
 const { createTemplateLoader, renderPostPage } = require('./page');
 const {
@@ -56,6 +57,15 @@ function errorPage(statusCode, message, cookies) {
   };
 }
 
+// The scope is chosen by routeKey but the work by method and path, so they must agree.
+function matchesRoute(routeKey, method, path) {
+  const [routeMethod, template] = routeKey.split(' ');
+  const expected = template.split('/');
+  const actual = path.split('/');
+  return routeMethod === method && expected.length === actual.length &&
+    expected.every((segment, index) => (/^\{\w+\}$/.test(segment) ? actual[index] !== '' : segment === actual[index]));
+}
+
 function readBody(event) {
   const raw = event.body ? Buffer.from(event.body, event.isBase64Encoded ? 'base64' : 'utf8') : Buffer.alloc(0);
   if (raw.length > MAX_BODY_BYTES) throw new HttpError(413, 'Request too large');
@@ -76,31 +86,16 @@ function createHandler(deps = {}) {
   const clock = deps.now || Date.now;
   const isoNow = () => new Date(clock()).toISOString();
 
-  // Cookies are SameSite=Lax; also insist that writes come from our own pages.
-  // Token requests skip this: browsers can't add the token header to a cross-site request without CORS, which we never allow.
+  // Cookies are SameSite=Lax; also insist that website writes come from our own pages. The managed API skips
+  // this: its Microsoft bearer token is never sent by a browser on its own, and the gateway allows no CORS.
   function requireSameOrigin(event, user) {
-    if (user && user.via === 'token') return;
+    if (user && user.via === 'microsoft-api') return;
     if (header(event, 'origin') !== process.env.SITE_URL) throw new HttpError(403, 'Cross-site request refused');
   }
 
-  // CloudFront replaces Authorization when it signs the request for Lambda, so the viewer function copies
-  // "Authorization: Bearer <token>" to x-blog-token. The dev server and tests send Authorization as is.
-  function tokenFrom(event) {
-    const copied = header(event, 'x-blog-token');
-    if (copied) return copied;
-    const match = /^Bearer\s+(\S+)\s*$/i.exec(header(event, 'authorization') || '');
-    return match ? match[1] : '';
-  }
-
-  // Who is calling: an API token if one was sent (a bad token is an error, never a fallback), else the session cookie.
-  async function authenticate(event, method, path) {
-    const token = tokenFrom(event);
-    if (token) {
-      const item = await tokens.verifyToken(store, token, clock());
-      if (!item) throw new HttpError(401, 'Invalid, expired or revoked API token');
-      console.log(JSON.stringify({ message: 'API token used', tokenId: item.id, tokenName: item.name, method, path }));
-      return { user: item.createdBy, name: item.createdByName, via: 'token', tokenId: item.id, tokenName: item.name, expiresAt: item.expiresAt || '' };
-    }
+  // The website entry point (CloudFront) knows only the session cookie; bearer tokens are never read there.
+  async function authenticate(event, caller) {
+    if (caller) return caller;
     return auth.getSession(event, await getConfig(), clock());
   }
 
@@ -122,45 +117,12 @@ function createHandler(deps = {}) {
   async function save(before, post, user, { create = false } = {}) {
     post.updatedAt = isoNow();
     post.updatedBy = user.user;
-    if (user.via === 'token') post.updatedVia = `API token "${user.tokenName}" (${user.tokenId})`;
+    if (user.via === 'microsoft-api') post.updatedVia = 'Microsoft API';
     else delete post.updatedVia;
     derive(post);
     await store.putPost(post, { create });
     await syncPublic(before, post);
     return post;
-  }
-
-  async function tokensApi(method, parts, event, user) {
-    if (!user || typeof user.user !== 'string' || !user.user) throw new HttpError(401, 'Sign in to do that');
-    if (user.via === 'token') throw new HttpError(403, 'API tokens cannot manage API tokens');
-    if (method !== 'GET') requireSameOrigin(event, user);
-    const [, tokenId] = parts;
-    if (parts.length === 1 && method === 'GET') {
-      const items = (await store.listTokens()).filter((item) => !tokens.isExpired(item, clock()));
-      return json(200, { tokens: items.map(tokens.toApiToken).sort((a, b) => b.createdAt.localeCompare(a.createdAt)) });
-    }
-    if (parts.length === 1 && method === 'POST') {
-      let request;
-      try {
-        request = tokens.parseTokenRequest(readBody(event));
-      } catch (error) {
-        if (error instanceof tokens.TokenInputError) throw new BadRequest(error.message);
-        throw error;
-      }
-      const live = (await store.listTokens()).filter((item) => !tokens.isExpired(item, clock()));
-      if (live.length >= tokens.MAX_TOKENS) throw new HttpError(409, `At most ${tokens.MAX_TOKENS} API tokens; revoke one first`);
-      const { item, token } = tokens.newToken(request, user, clock());
-      await store.putToken(item);
-      console.log(JSON.stringify({ message: 'API token created', tokenId: item.id, tokenName: item.name, by: user.user }));
-      return json(201, { ...tokens.toApiToken(item), token });
-    }
-    if (parts.length === 2 && method === 'DELETE') {
-      if (!tokens.TOKEN_ID.test(tokenId) || !(await store.deleteToken(tokenId))) throw new NotFound('Token not found');
-      console.log(JSON.stringify({ message: 'API token revoked', tokenId, by: user.user }));
-      return json(200, { revoked: tokenId });
-    }
-    if (parts.length > 2) throw new NotFound('Not found');
-    throw new HttpError(405, 'Method not allowed');
   }
 
   // Readers' reactions: GET the counts and your own; POST {"reaction": "love"} or {"reaction": null}.
@@ -208,30 +170,28 @@ function createHandler(deps = {}) {
     return json(200, { counts: reactions.toCounts(counts), mine }, cookies);
   }
 
-  async function api(method, parts, event) {
-    const path = `/api/${parts.join('/')}`;
+  // caller is the Microsoft API user for managed requests (already authorized for this route), else undefined.
+  async function api(method, parts, event, caller) {
     if (parts.length === 1 && parts[0] === 'me' && method === 'GET') {
       try {
-        const session = await authenticate(event, method, path);
+        const session = await authenticate(event, caller);
         if (!session) return json(200, { signedIn: false });
-        const me = { signedIn: true, user: session.user, name: session.name };
-        if (session.via === 'token') me.token = { id: session.tokenId, name: session.tokenName, expiresAt: session.expiresAt };
-        return json(200, me);
+        return json(200, { signedIn: true, user: session.user, name: session.name });
       } catch (error) {
         if (error instanceof NotConfigured) return json(200, { signedIn: false, configured: false });
         throw error;
       }
     }
-    if (parts[0] === 'tokens') return tokensApi(method, parts, event, await authenticate(event, method, path));
-    if (parts[0] === 'reactions') return reactionsApi(method, parts, event);
+    if (parts[0] === 'reactions' && !caller) return reactionsApi(method, parts, event);
     if (parts[0] !== 'posts') throw new NotFound('Not found');
     const [, postId, sub, fileId] = parts;
     if (postId !== undefined && !POST_ID.test(postId)) throw new NotFound('Post not found');
-    if (sub !== undefined && sub !== 'files') throw new NotFound('Not found');
+    // /api/posts/<id>/reactions lists who reacted: website session only, never the Microsoft API.
+    if (sub !== undefined && sub !== 'files' && (sub !== 'reactions' || caller || parts.length !== 3)) throw new NotFound('Not found');
     if (fileId !== undefined && !FILE_ID.test(fileId)) throw new NotFound('File not found');
 
     // Everything under /api/posts is for authors; readers get the static JSON.
-    const user = await authenticate(event, method, path);
+    const user = await authenticate(event, caller);
     if (!user || typeof user.user !== 'string' || !user.user) throw new HttpError(401, 'Sign in to do that');
     if (method !== 'GET') requireSameOrigin(event, user);
 
@@ -279,7 +239,6 @@ function createHandler(deps = {}) {
         return json(200, toApiPost(await save(before, post, user)));
       }
       if (method === 'DELETE') {
-        if (user.via === 'token') throw new HttpError(403, 'API tokens cannot delete posts. Unpublish it instead (status "draft"); the owner can delete it in the browser.');
         const before = await getPost(postId);
         await store.deletePost(postId);
         await files.removePost(postId);
@@ -291,6 +250,22 @@ function createHandler(deps = {}) {
         }
         return json(200, { deleted: postId });
       }
+    }
+
+    if (sub === 'reactions') {
+      if (method !== 'GET') throw new HttpError(405, 'Method not allowed');
+      await getPost(postId);
+      const cookie = auth.parseCookies(event)[reactions.VISITOR_COOKIE] || '';
+      const list = (await store.listReactionVisitors(postId))
+        .filter((item) => reactions.VISITOR_ID.test(item.visitor) && reactions.REACTIONS.includes(item.reaction))
+        .map((item) => ({
+          visitor: item.visitor,
+          reaction: item.reaction,
+          updatedAt: typeof item.updatedAt === 'string' ? item.updatedAt : null,
+          you: item.visitor === cookie,
+        }))
+        .sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
+      return json(200, { reactions: list });
     }
 
     if (sub === 'files') {
@@ -362,8 +337,21 @@ function createHandler(deps = {}) {
     const path = event.rawPath || '/';
     const params = event.queryStringParameters || {};
     const siteUrl = process.env.SITE_URL;
+    const context = event.requestContext;
+    // Only API Gateway sets a JWT authorizer or a route key other than $default (a function URL always sends $default);
+    // the function URL itself is reachable only through CloudFront, which signs with origin access control.
+    const managedApi = Boolean(context && ((context.authorizer && context.authorizer.jwt) ||
+      (context.apiId && context.routeKey && context.routeKey !== '$default')));
 
     try {
+      if (managedApi) {
+        // The managed API serves only the routes in routes.json, each with its exact Microsoft scope; no cookies.
+        const route = Object.hasOwn(ROUTES, context.routeKey) ? ROUTES[context.routeKey] : null;
+        if (!route || !matchesRoute(context.routeKey, method, path)) return json(404, { error: 'Not found' });
+        const caller = apiAccess.authorize(event, route.scope);
+        if (caller.status) return json(caller.status, { error: caller.error });
+        return await api(method, path.slice('/api/'.length).split('/').filter(Boolean), event, { ...caller, via: 'microsoft-api' });
+      }
       if (path === '/index.html') return await postPage(event, method);
       if (path.startsWith('/auth/')) {
         if (method !== 'GET') return json(405, { error: 'Method not allowed' });

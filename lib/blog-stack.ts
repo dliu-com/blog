@@ -2,17 +2,25 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Construct } from 'constructs';
 import {
+  aws_apigatewayv2 as apigateway,
+  aws_apigatewayv2_authorizers as authorizers,
+  aws_apigatewayv2_integrations as integrations,
   aws_certificatemanager as acm,
   aws_cloudfront as cloudfront,
   aws_cloudfront_origins as origins,
   aws_dynamodb as dynamodb,
+  aws_events as events,
+  aws_events_targets as eventTargets,
   aws_iam as iam,
   aws_lambda as lambda,
+  aws_lambda_event_sources as eventSources,
   aws_logs as logs,
   aws_route53 as route53,
   aws_route53_targets as targets,
   aws_s3 as s3,
   aws_s3_deployment as s3deploy,
+  aws_sqs as sqs,
+  aws_ssm as ssm,
   CfnOutput,
   Duration,
   Fn,
@@ -20,6 +28,7 @@ import {
   Stack,
   StackProps,
 } from 'aws-cdk-lib';
+import apiRoutes from '../lambda/api/routes.json';
 
 const ROOT = path.join(__dirname, '..');
 
@@ -28,11 +37,23 @@ export const PARAMETER_PREFIX = '/blog';
 // SPA rewrites (/<postId>, /admin…, /docs) and old WordPress URLs (/<slug>/, /wp-admin, /YYYY/MM/, /page/N/). Shared with the dev server.
 export const VIEWER_REQUEST_CODE = fs.readFileSync(path.join(ROOT, 'functions/viewer-request.js'), 'utf8');
 
+// The agent-readable API guide names the managed API origin; the deployed copy gets the real MicrosoftApiUrl.
+export const API_DOC = 'docs/api.md';
+export const API_URL_PLACEHOLDER = '{{MICROSOFT_API_URL}}';
+// Site files other than the HTML shells. Every deploy invalidates them at CloudFront.
+export const STATIC_CACHE = 'public, max-age=300, s-maxage=86400, stale-while-revalidate=86400';
+
 export interface BlogStackProps extends StackProps {
   /** Subdomain under the MainDomain export. */
   subdomain?: string;
   /** Send CloudFront logs to the TrafficMonitor stack (needs its exports). */
   trafficLogging?: boolean;
+  /**
+   * Managed API for trusted tools: API Gateway checks Microsoft Entra access tokens (scopes blog.read,
+   * blog.write, blog.delete) before the API Lambda checks tenant, client, identity and the api.access role.
+   * Needs the /blog/api-tenant-id, /blog/api-audience and /blog/api-client-id parameters.
+   */
+  microsoftApi?: boolean;
 }
 
 /**
@@ -63,12 +84,15 @@ export class BlogStack extends Stack {
       deletionProtection: true,
       removalPolicy: RemovalPolicy.RETAIN,
     });
-    // API tokens for agents (hash of the secret only). Expired tokens are removed by TTL.
-    const tokensTable = new dynamodb.TableV2(this, 'Tokens', {
+    // Retired: the old blog API tokens (hashes only). Nothing reads or writes it any more; the Microsoft API
+    // replaced it. Kept, and retained, so its history is never deleted by a deploy (dropping it from the
+    // template would apply the old DESTROY policy).
+    new dynamodb.TableV2(this, 'Tokens', {
       partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
       billing: dynamodb.Billing.onDemand(),
       timeToLiveAttribute: 'ttl',
-      removalPolicy: RemovalPolicy.DESTROY,
+      deletionProtection: true,
+      removalPolicy: RemovalPolicy.RETAIN,
     });
 
     // Readers' reactions: per post a counts item and one item per visitor (dl_vid); per IP hash,
@@ -90,6 +114,8 @@ export class BlogStack extends Stack {
       enforceSSL: true,
       versioned: false,
       removalPolicy: RemovalPolicy.RETAIN,
+      // Media changes clear CloudFront's copy (see MediaInvalidator).
+      eventBridgeEnabled: true,
       cors: [{
         allowedMethods: [s3.HttpMethods.PUT],
         allowedOrigins: [siteUrl],
@@ -116,7 +142,6 @@ export class BlogStack extends Stack {
         SITE_URL: siteUrl,
         ROOT_DOMAIN: rootDomain,
         TABLE_NAME: table.tableName,
-        TOKENS_TABLE: tokensTable.tableName,
         REACTIONS_TABLE: reactionsTable.tableName,
         CONTENT_BUCKET: contentBucket.bucketName,
         PARAMETER_PREFIX,
@@ -127,7 +152,6 @@ export class BlogStack extends Stack {
       }),
     });
     table.grantReadWriteData(apiHandler);
-    tokensTable.grantReadWriteData(apiHandler);
     reactionsTable.grantReadWriteData(apiHandler);
     contentBucket.grantReadWrite(apiHandler);
     contentBucket.grantDelete(apiHandler);
@@ -141,6 +165,37 @@ export class BlogStack extends Stack {
       conditions: { StringEquals: { 'kms:ViaService': `ssm.${this.region}.amazonaws.com` } },
     }));
     const functionUrl = apiHandler.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
+
+    // ---------- Microsoft API (trusted tools and agents; see /docs/api) ----------
+    let microsoftApiUrl: string | undefined;
+    if (props.microsoftApi) {
+      const parameter = (name: string) => ssm.StringParameter.valueForStringParameter(this, `${PARAMETER_PREFIX}/api-${name}`);
+      const tenantId = parameter('tenant-id');
+      const audience = parameter('audience');
+      const clientId = parameter('client-id');
+      const httpApi = new apigateway.HttpApi(this, 'MicrosoftApi', {
+        description: 'Blog API: Microsoft Entra access tokens, delegated permissions and assigned users',
+      });
+      const authorizer = new authorizers.HttpJwtAuthorizer('MicrosoftJwt',
+        Fn.join('', ['https://login.microsoftonline.com/', tenantId, '/v2.0']), { jwtAudience: [audience] });
+      const integration = new integrations.HttpLambdaIntegration('BlogApi', apiHandler);
+      for (const [route, permission] of Object.entries(apiRoutes)) {
+        const [method, routePath] = route.split(' ');
+        httpApi.addRoutes({
+          path: routePath,
+          methods: [apigateway.HttpMethod[method as 'GET' | 'POST' | 'PUT' | 'DELETE']],
+          integration,
+          authorizer,
+          authorizationScopes: [permission.scope],
+        });
+      }
+      apiHandler.addEnvironment('API_GATEWAY_ID', httpApi.apiId);
+      apiHandler.addEnvironment('API_TENANT_ID', tenantId);
+      apiHandler.addEnvironment('API_AUDIENCE', audience);
+      apiHandler.addEnvironment('API_CLIENT_ID', clientId);
+      microsoftApiUrl = httpApi.apiEndpoint;
+      new CfnOutput(this, 'MicrosoftApiUrl', { value: microsoftApiUrl });
+    }
 
     // ---------- Website ----------
     const siteBucket = new s3.Bucket(this, 'SiteBucket', {
@@ -165,11 +220,12 @@ export class BlogStack extends Stack {
       securityHeadersBehavior: {
         contentSecurityPolicy: {
           // Uploads go straight to the content bucket; posts may show pictures from other https sites
-          // and videos from video.dliu.com.
+          // and videos from video.dliu.com. Every page loads the traffic monitor's page script, which
+          // beacons to traffic.dliu.com.
           contentSecurityPolicy: Fn.join('', [
-            "default-src 'self'; script-src 'self'; style-src 'self'; object-src 'none'; ",
+            "default-src 'self'; script-src 'self' https://traffic.dliu.com; style-src 'self'; object-src 'none'; ",
             "img-src 'self' data: blob: https:; media-src 'self' blob:; ",
-            "connect-src 'self' https://", contentBucket.bucketRegionalDomainName, '; ',
+            "connect-src 'self' https://traffic.dliu.com https://", contentBucket.bucketRegionalDomainName, '; ',
             "frame-src https://video.dliu.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
           ]),
           override: true,
@@ -219,7 +275,7 @@ export class BlogStack extends Stack {
       cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
       originRequestPolicy: cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
       responseHeadersPolicy: headers,
-      // Copies "Authorization: Bearer" to x-blog-token, because CloudFront replaces Authorization when it signs for Lambda.
+      // Adds x-blog-viewer (the reactions rate limit). Website sign-in only: bearer tokens go to the Microsoft API.
       functionAssociations: [{ eventType: cloudfront.FunctionEventType.VIEWER_REQUEST, function: viewerRequest }],
     };
 
@@ -294,7 +350,9 @@ export class BlogStack extends Stack {
       certificate,
       defaultRootObject: 'index.html',
       minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
-      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+      // Readers are mostly in Europe and Asia: every edge location, and HTTP/3 for phones on mobile networks.
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_ALL,
+      httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,
     });
     if (trafficLogging) {
       // TrafficMonitor delivers this distribution's access logs (CloudFront standard logging v2).
@@ -312,14 +370,82 @@ export class BlogStack extends Stack {
       invokedViaFunctionUrl: true,
     });
 
-    new s3deploy.BucketDeployment(this, 'SiteContent', {
-      sources: [s3deploy.Source.asset(path.join(ROOT, 'web'))],
+    // Two uploads of web/, each syncing (and pruning) only its own files, and each invalidating /*.
+    // Scripts, styles, images and docs/api.md: CloudFront keeps them a day (a deploy invalidates them),
+    // browsers five minutes.
+    const webAsset = s3deploy.Source.asset(path.join(ROOT, 'web'), { exclude: [API_DOC] });
+    const assets = new s3deploy.BucketDeployment(this, 'SiteContent', {
+      sources: [
+        webAsset,
+        s3deploy.Source.data(API_DOC, fs.readFileSync(path.join(ROOT, 'web', API_DOC), 'utf8')
+          .split(API_URL_PLACEHOLDER).join(microsoftApiUrl ?? '(the Microsoft API is not deployed)')),
+      ],
       destinationBucket: siteBucket,
+      exclude: ['*.html'],
       distribution,
       distributionPaths: ['/*'],
-      // Browsers revalidate (cheap 304s) so a deploy takes effect on the next load.
+      cacheControl: [s3deploy.CacheControl.fromString(STATIC_CACHE)],
+    });
+    // The HTML shells: browsers and CloudFront revalidate (cheap 304s), so a deploy takes effect on the
+    // next load. Uploaded after the files they load.
+    const pages = new s3deploy.BucketDeployment(this, 'SitePages', {
+      sources: [webAsset],
+      destinationBucket: siteBucket,
+      exclude: ['*'],
+      include: ['*.html'],
+      distribution,
+      distributionPaths: ['/*'],
       cacheControl: [s3deploy.CacheControl.noCache()],
     });
+    pages.node.addDependency(assets);
+
+    // ---------- Automatic clearing of post media ----------
+    // media/ is cached at CloudFront for a day. The app never overwrites a media key (a replaced file gets
+    // a new ID, and saving copies the upload to a new key), but deleting a file or post, or changing media/
+    // in the S3 console, would leave the old copy at the edge. Deletes, and uploads other than the app's
+    // copies, are queued for a minute and cleared together, usually as one invalidation path.
+    // Not cleared here: site files (each deploy clears /*), content/*.json (no-cache), pending/ (not served),
+    // new media keys (never cached), and the logging buckets (not served).
+    const mediaChanges = new sqs.Queue(this, 'MediaChanges', {
+      encryption: sqs.QueueEncryption.SQS_MANAGED,
+      enforceSSL: true,
+      // After a day CloudFront's copy has expired anyway.
+      retentionPeriod: Duration.days(1),
+      visibilityTimeout: Duration.minutes(5),
+    });
+    new events.Rule(this, 'MediaChanged', {
+      description: 'blog.dliu.com media deleted or changed outside the app',
+      eventPattern: {
+        source: ['aws.s3'],
+        detailType: ['Object Deleted', 'Object Created'],
+        detail: {
+          bucket: { name: [contentBucket.bucketName] },
+          object: { key: [{ prefix: 'media/' }] },
+          // The app's own media writes are copies to brand-new keys.
+          reason: [{ 'anything-but': 'CopyObject' }],
+        },
+      },
+      targets: [new eventTargets.SqsQueue(mediaChanges)],
+    });
+    const mediaInvalidator = new lambda.Function(this, 'MediaInvalidator', {
+      runtime: lambda.Runtime.NODEJS_22_X,
+      handler: 'index.handler',
+      code: lambda.Code.fromAsset(path.join(ROOT, 'lambda/invalidate')),
+      timeout: Duration.seconds(30),
+      memorySize: 128,
+      description: 'blog.dliu.com clears CloudFront copies of deleted or changed media',
+      environment: { DISTRIBUTION_ID: distribution.distributionId },
+      logGroup: new logs.LogGroup(this, 'MediaInvalidatorLogs', {
+        retention: logs.RetentionDays.ONE_MONTH,
+        removalPolicy: RemovalPolicy.DESTROY,
+      }),
+    });
+    distribution.grantCreateInvalidation(mediaInvalidator);
+    mediaInvalidator.addEventSource(new eventSources.SqsEventSource(mediaChanges, {
+      batchSize: 1000,
+      maxBatchingWindow: Duration.minutes(1),
+      maxConcurrency: 2,
+    }));
 
     new route53.ARecord(this, 'SiteAliasRecord', {
       recordName: subdomain,

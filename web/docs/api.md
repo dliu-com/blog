@@ -1,135 +1,81 @@
 # DL blog API
 
-This guide is for AI agents and scripts that write posts on https://blog.dliu.com on the owner's behalf. It is plain Markdown so that agents can read it directly: https://blog.dliu.com/docs/api.md
+This reference is for trusted tools, scripts and AI agents that manage posts on https://blog.dliu.com for the owner. The same guide is available as plain Markdown at https://blog.dliu.com/docs/api.md, so an agent can read it directly.
 
-With an API token you can list, read, create and edit posts, publish and unpublish them, and attach pictures and files. You cannot delete posts or manage tokens; only the owner can, in the browser.
+The managed API accepts Microsoft-issued user access tokens. It can read and list posts (drafts included), create and edit posts, publish and unpublish them, attach pictures and files, and delete files or posts when the token has the corresponding permission.
+
+**Authentication is required:** configure your requester using the [Auth API documentation](https://auth.dliu.com/docs/api). That is the canonical guide for credentials, token acquisition, expiry and authenticated request setup; this reference covers only the Blog API.
 
 ## Quick rules
 
-1. Base URL: `https://blog.dliu.com`. All API paths start with `/api/`.
-2. Send the token on every request: `Authorization: Bearer <token>`.
-3. Every POST, PUT and DELETE must also send `x-amz-content-sha256: <hex SHA-256 of the exact request body bytes>`. For an empty body use `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`. Without it the request fails with HTTP 403 and a message about a signature. GET requests don't need it.
-4. Request bodies are JSON: `Content-Type: application/json`, UTF-8, at most 300 KB.
-5. Responses are JSON. Errors look like `{"error": "message"}`.
-6. The token is in the credentials file `~/.dliu_credentials` (see Authentication). Read it from there for each request. Never print it, log it, copy it elsewhere, commit it or put it in a post.
-7. Save new posts as drafts (the default) unless the owner asked you to publish.
-8. Before you edit a post, GET it and change its current text, so you don't overwrite the owner's edits.
-9. Send one request at a time; this is a small personal site.
+1. The managed API origin is `{{MICROSOFT_API_URL}}` (the deployment output `MicrosoftApiUrl`). All nine managed routes are listed below. Send API requests only to this origin.
+2. Configure authentication according to the [Auth API documentation](https://auth.dliu.com/docs/api) before using any route. Blog website sign-in is not API authentication, and `https://blog.dliu.com/api/*` accepts only website cookies: do not send bearer requests there.
+3. Request bodies are JSON objects with `Content-Type: application/json`, UTF-8, at most 300 KB. Do not send file bytes to this API; they go straight to storage (see Pictures and files).
+4. Requests do not need `Origin`, website cookies or `x-amz-content-sha256`.
+5. Responses are JSON. Errors come either from the gateway (`{"message": "..."}`) or from the blog (`{"error": "..."}`).
+6. Do only what the owner asked. Save new posts as drafts (the default) unless the owner asked you to publish; publishing makes a post public, and deleting cannot be undone. Do not run write or delete examples just to check a token: use `GET /api/me`.
+7. Before you edit a post, GET it and change its current text, so you don't overwrite the owner's edits. There is no ETag or conditional update; send one request at a time.
+8. Treat presigned upload URLs as credentials: never put them in chat, posts, logs or saved settings. Do not follow redirects with credentials.
+
+## Endpoint summary
+
+- `GET /api/me`, scope `blog.read`: Read the authenticated user identity
+- `GET /api/posts`, scope `blog.read`: List all posts, drafts included (no body text)
+- `GET /api/posts/<id>`, scope `blog.read`: Read a post, including body and files
+- `POST /api/posts`, scope `blog.write`: Create a post
+- `PUT /api/posts/<id>`, scope `blog.write`: Edit, publish or unpublish a post
+- `POST /api/posts/<id>/files`, scope `blog.write`: Start a picture or file upload
+- `PUT /api/posts/<id>/files/<fileId>`, scope `blog.write`: Attach a finished upload to the post
+- `DELETE /api/posts/<id>/files/<fileId>`, scope `blog.delete`: Remove a file from a post and delete it
+- `DELETE /api/posts/<id>`, scope `blog.delete`: Delete a post and all its files
+
+`blog.write` does not include `blog.delete`. There are no token-management, sign-in, reaction or comment routes on the managed API; any other method or path gets HTTP 404.
 
 ## Authentication
 
-The owner creates tokens at https://blog.dliu.com/admin/tokens. A token is `blog_`, 12 hexadecimal characters, `_` and 64 more hexadecimal characters. It expires on the date the owner chose (or never) and the owner can revoke it at any time. A missing, wrong, expired or revoked token gets HTTP 401.
+Follow the required [Auth API documentation](https://auth.dliu.com/docs/api) before calling the Blog API. Credential lookup, token storage, expiry and renewal, and authorization-header construction belong there, not in this site-specific guide.
 
-### Where the token is stored
+The gateway validates the Microsoft signature, the tenant-specific v2 issuer, the audience, the token times and the route's scope. The blog then also requires the configured gateway, tenant, audience, the approved client (`azp`), the user's object and subject IDs, and the Microsoft-assigned user role **dliu API user** (`api.access`, shared by all dliu.com APIs; the route's `blog.*` scope still limits what the token can do). Only accounts assigned this role can use the API; other organisation accounts can still use the website but not this API. Website cookies never act as a fallback on this API. An ID token, Microsoft Graph token, app-only token or blog session cookie does not work.
 
-Like `~/.aws/credentials`, the token lives in an INI-style credentials file that only the owner's user account can read:
+Tokens come only from Central Microsoft sign-in at https://auth.dliu.com; the blog has no API sign-in, token issuing, refresh or revocation of its own. When a token expires, the owner gets a new one there.
 
-- Path: `~/.dliu_credentials` (or the path in the environment variable `DLIU_CREDENTIALS_FILE`, if set).
-- Permissions: `600` (read and write by the owner only).
-- Contents: a `[blog]` section with a `token` key. Other sections may exist for other apps; leave them alone.
+The blog keeps no application-wide cache of bearer tokens, does not store them and does not log authorization headers or whole requests. Request data may stay in a warm function's memory until it is reused; this is not a forensic erasure guarantee.
 
-```ini
-[blog]
-token = blog_0123456789ab_...
-```
-
-The owner saves it with this command (bash or zsh). It asks for the token without showing it, keeps any other sections, never puts the token in the shell history and clears the clipboard on macOS:
-
-```bash
-(umask 077 && f=~/.dliu_credentials && printf 'Paste the blog token, then press Return: ' && read -rs t && echo && case "$t" in blog_*) ;; *) echo 'That is not a blog token' >&2; exit 1;; esac && touch "$f" && chmod 600 "$f" && T="$t" awk '/^[[:space:]]*\[/{s=($0 ~ /^[[:space:]]*\[blog\][[:space:]]*$/)} !s{print; last=$0} END{if (last != "") print ""; print "[blog]"; print "token = " ENVIRON["T"]}' "$f" > "$f.new" && mv "$f.new" "$f" && { command -v pbcopy >/dev/null && pbcopy </dev/null; true; } && echo "Saved to $f")
-```
-
-Rules for agents:
-
-- Read the token from the file only at the moment you send a request, as the helpers below do. Don't `cat` the file, echo the token, or keep it in your notes, so that it never appears in your output or conversation.
-- Don't put the token in command-line arguments, URLs or any other file.
-- If the file or its `[blog]` token is missing, or the API returns 401, stop and ask the owner for a new token. Never ask the owner to paste the token into the chat.
-
-Check that the token works:
+Check that authentication works (read-only):
 
 ```
 GET /api/me
 ```
 
 ```json
-{"signedIn": true, "user": "owner@example.com", "name": "Dewei Liu",
- "token": {"id": "0123456789ab", "name": "Writing agent", "expiresAt": "2027-01-26T10:00:00.000Z"}}
+{"signedIn": true, "user": "<Microsoft object ID>", "name": "Dewei Liu"}
 ```
 
-## Helpers
+`user` is the stable Microsoft object ID of the signed-in account. Posts and uploads created through the API record it, and edits are marked as made through the Microsoft API.
 
-### Bash (curl)
+## Workflow for a trusted local AI agent
+
+1. The owner signs in at https://auth.dliu.com and saves or copies a token as that site describes.
+2. The owner gives a trusted AI agent on their own computer only this guide (https://blog.dliu.com/docs/api.md) and a specific task, for example "draft a post about our trip with these three photos; don't publish it".
+3. The agent reads this guide and the [Auth API documentation](https://auth.dliu.com/docs/api), uses the saved credentials as described there, and calls only the routes the task needs.
+4. The agent reports the post's ID and, if the owner asked to publish it, its link `https://blog.dliu.com/<id>`.
+
+The agent needs no AWS credentials and no other API address. It must never print, paste or store the token, ask the owner to paste it into the chat, or send it anywhere other than the managed API origin above. If the credentials are missing or expired, or the API returns 401, it stops and asks the owner to get a fresh token at auth.dliu.com.
+
+### Optional command-line client
+
+The blog's source repository includes `scripts/api-client.js` (Node.js 22 or later, no dependencies). It reads the saved credentials as described in the Auth documentation for every request, checks the method and path against the nine routes, refuses redirects and never prints the token. From a checkout of the blog repository:
 
 ```bash
-BLOG=https://blog.dliu.com
-DLIU_CREDENTIALS_FILE="${DLIU_CREDENTIALS_FILE:-$HOME/.dliu_credentials}"
-
-sha256() { if command -v sha256sum >/dev/null; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }
-
-# Prints the token from the [blog] section. Only ever pipe it into curl.
-blog_token() {
-  awk '/^[[:space:]]*\[/{s=($0 ~ /^[[:space:]]*\[blog\][[:space:]]*$/); next}
-       s && /^[[:space:]]*token[[:space:]]*=/{sub(/^[^=]*=[[:space:]]*/, ""); sub(/[[:space:]]+$/, ""); print; exit}' \
-    "$DLIU_CREDENTIALS_FILE" 2>/dev/null
-}
-
-# blog METHOD API_PATH [JSON_BODY]
-# The token goes from the file to curl through a pipe (-H @file), so it is
-# never printed, stored in a variable or visible in the process list.
-blog() {
-  local method="$1" route="$2" body="${3-}"
-  [ -n "$(blog_token)" ] || { echo "No [blog] token in $DLIU_CREDENTIALS_FILE; ask the owner for a token" >&2; return 1; }
-  local args=(-sS -X "$method" "$BLOG$route" -H "Accept: application/json")
-  if [ "$method" != GET ]; then
-    args+=(-H "x-amz-content-sha256: $(printf '%s' "$body" | sha256)")
-    if [ -n "$body" ]; then args+=(-H "Content-Type: application/json" --data-binary "$body"); fi
-  fi
-  curl "${args[@]}" -H @<(printf 'Authorization: Bearer %s\n' "$(blog_token)")
-}
-
-blog GET /api/me
+export BLOG_API_URL='{{MICROSOFT_API_URL}}'
+node scripts/api-client.js GET /api/me
+node scripts/api-client.js GET /api/posts
+# Only when the owner asked for it:
+node scripts/api-client.js POST /api/posts '{"title":"Autumn in Dublin","body":"Draft in progress."}'
+node scripts/api-client.js upload 2026102801 park.jpg image/jpeg
 ```
 
-This works in bash and zsh (curl 7.55 or later).
-
-Build JSON with `jq` so that quotes and newlines in the text are escaped correctly:
-
-```bash
-blog POST /api/posts "$(jq -n --arg title 'Autumn in Dublin' --rawfile body post.md '{title: $title, body: $body}')"
-```
-
-### Python (standard library only)
-
-```python
-import configparser, hashlib, json, os, urllib.request, urllib.error
-
-BLOG = "https://blog.dliu.com"
-CREDENTIALS_FILE = os.path.expanduser(os.environ.get("DLIU_CREDENTIALS_FILE", "~/.dliu_credentials"))
-
-def blog_token():
-    config = configparser.ConfigParser(interpolation=None)
-    config.read(CREDENTIALS_FILE)
-    return config.get("blog", "token", fallback="").strip()
-
-def blog(method, path, data=None):
-    body = b"" if data is None else json.dumps(data).encode("utf-8")
-    token = blog_token()  # read per request; never print it
-    if not token:
-        raise RuntimeError("No [blog] token in " + CREDENTIALS_FILE + "; ask the owner for a token")
-    headers = {"Authorization": "Bearer " + token, "Accept": "application/json"}
-    if method != "GET":
-        headers["x-amz-content-sha256"] = hashlib.sha256(body).hexdigest()
-        if data is not None:
-            headers["Content-Type"] = "application/json"
-    request = urllib.request.Request(BLOG + path, data=body if method != "GET" else None, method=method, headers=headers)
-    try:
-        with urllib.request.urlopen(request) as response:
-            return json.loads(response.read() or b"{}")
-    except urllib.error.HTTPError as error:
-        raise RuntimeError(f"{method} {path} -> {error.code}: {error.read().decode()}") from None
-
-print(blog("GET", "/api/me"))
-```
+`BLOG_API_ACCESS_TOKEN` (a token copied from auth.dliu.com) and `BLOG_API_TOKEN_FILE` (an absolute path to a saved credentials file) override the default credentials file, as for the Video client in the Auth documentation.
 
 ## Posts
 
@@ -143,7 +89,7 @@ A post:
   "status": "draft",
   "files": [{"id": "Ab3dEf6hIj9kLm0n", "name": "park.jpg", "type": "image/jpeg", "size": 482113,
              "url": "/media/2026102801/Ab3dEf6hIj9kLm0n/park.jpg", "uploadedAt": "2026-10-28T10:05:00.000Z"}],
-  "author": "owner@example.com",
+  "author": "<Microsoft object ID or the owner's sign-in>",
   "authorName": "Dewei Liu",
   "createdAt": "2026-10-28T10:00:00.000Z",
   "updatedAt": "2026-10-28T10:05:00.000Z",
@@ -152,7 +98,7 @@ A post:
 ```
 
 - `id` is the creation date (UTC) plus a two-digit number for that day: `yyyymmddNN`, e.g. `2026102800`, `2026102801`. The server assigns it.
-- `status` is `draft` (seen only by the owner and by tokens) or `published` (public).
+- `status` is `draft` (seen only by the owner and the API) or `published` (public).
 - A published post is at `https://blog.dliu.com/<id>`, e.g. https://blog.dliu.com/2026102801.
 - `publishedAt` is set the first time a post is published and kept if it is unpublished and published again.
 - Limits: title 200 characters, body 200 KB, 100 files a post, 100 MB a file, 100 new posts a day.
@@ -191,9 +137,13 @@ PUT /api/posts/<id>
 
 Send only the fields you want to change; the others are kept. `body` replaces the whole text. Use `"status": "published"` to publish and `"status": "draft"` to take a post off the public site. Returns the updated post.
 
-### Delete
+### Delete a post
 
-Not allowed with a token (HTTP 403). To take a post down, set `"status": "draft"` and tell the owner, who can delete it in the browser.
+```
+DELETE /api/posts/<id>
+```
+
+Requires `blog.delete`. Deletes the post and all its files permanently and returns `{"deleted": "<id>"}`. Only do this when the owner explicitly asked to delete that post; to take a post down temporarily, set `"status": "draft"` instead.
 
 ## Pictures and files
 
@@ -208,10 +158,10 @@ Uploading is three steps. The file itself goes straight to storage, not through 
 
    Returns HTTP 201: `{"fileId": "Ab3dEf6hIj9kLm0n", "uploadUrl": "https://...", "uploadHeaders": {"content-type": "image/jpeg"}}`.
 
-2. Within 15 minutes, PUT the raw bytes to `uploadUrl`, with the `uploadHeaders` and no other headers: no Authorization and no x-amz-content-sha256. The size and type must match step 1.
+2. Within 15 minutes, PUT the raw bytes to `uploadUrl` with exactly the `uploadHeaders` and no other headers. Never send the Microsoft token to storage. The size and type must match step 1.
 
    ```bash
-   curl -sS -X PUT "$UPLOAD_URL" -H "content-type: image/jpeg" --data-binary @park.jpg
+   curl -sS --fail -X PUT "$UPLOAD_URL" -H "content-type: image/jpeg" --data-binary @park.jpg
    ```
 
 3. Attach the upload to the post:
@@ -231,26 +181,13 @@ To show a picture inside the text, add it to the body with its `url`, then PUT t
 
 Link other files the same way without the `!`: `[Route map (PDF)](/media/...)`. Pictures not used in the text appear in a gallery under the post, and other files in a list of attachments.
 
-Remove a file from a post (this also deletes it):
+Remove a file from a post (requires `blog.delete`; this also deletes the file):
 
 ```
 DELETE /api/posts/<id>/files/<fileId>
 ```
 
-In Python:
-
-```python
-import os, urllib.request
-
-def upload(post_id, path, mime_type):
-    name = os.path.basename(path)
-    data = open(path, "rb").read()
-    start = blog("POST", f"/api/posts/{post_id}/files", {"name": name, "size": len(data), "type": mime_type})
-    put = urllib.request.Request(start["uploadUrl"], data=data, method="PUT", headers=start["uploadHeaders"])
-    urllib.request.urlopen(put).close()
-    post = blog("PUT", f"/api/posts/{post_id}/files/{start['fileId']}", {"name": name})
-    return next(f for f in post["files"] if f["id"] == start["fileId"])["url"]
-```
+Returns the updated post.
 
 ## Writing posts
 
@@ -262,38 +199,28 @@ Not supported: raw HTML (shown as text) and tables. Links must be https://, http
 
 The title is plain text; don't repeat it as a `#` heading at the top of the body.
 
-## Example: write a post with a picture and publish it
+## Example: draft a post with a picture
 
-```python
-post = blog("POST", "/api/posts", {"title": "Autumn in Dublin", "body": "Draft in progress."})
-url = upload(post["id"], "park.jpg", "image/jpeg")
-body = "A walk through Phoenix Park.\n\n![Phoenix Park in October](" + url + ")\n\nThe deer were out."
-blog("PUT", f"/api/posts/{post['id']}", {"body": body})
-# Only if the owner asked you to publish:
-blog("PUT", f"/api/posts/{post['id']}", {"status": "published"})
-print("https://blog.dliu.com/" + post["id"])
+With the command-line client (publish only if the owner asked):
+
+```bash
+node scripts/api-client.js POST /api/posts '{"title":"Autumn in Dublin","body":"Draft in progress."}'   # note the id
+node scripts/api-client.js upload 2026102801 park.jpg image/jpeg                                       # note the url
+node scripts/api-client.js PUT /api/posts/2026102801 '{"body":"A walk through Phoenix Park.\n\n![Phoenix Park in October](/media/2026102801/Ab3dEf6hIj9kLm0n/park.jpg)\n\nThe deer were out."}'
+node scripts/api-client.js PUT /api/posts/2026102801 '{"status":"published"}'
 ```
+
+The IDs above are examples; use the ones returned for your task.
 
 ## Errors
 
-- 400: invalid input; the message says what to fix.
-- 401: missing, wrong, expired or revoked token. Ask the owner to save a new one in `~/.dliu_credentials`.
-- 403 `{"error": ...}`: not allowed with a token (deleting posts, managing tokens).
-- 403 `{"message": "...signature..."}`: the `x-amz-content-sha256` header is missing or doesn't match the body. Hash the exact bytes you send.
-- 404: no such post, file or path.
-- 405: wrong method for the path.
+- 400 `{"error": ...}`: invalid input; the message says what to fix.
+- 401 `{"message": "Unauthorized"}`: no valid Microsoft access token for this API (missing, expired, wrong audience or issuer). Get a fresh token as described in the [Auth API documentation](https://auth.dliu.com/docs/api).
+- 401 `{"error": "Microsoft access token required"}`: the token passed the gateway but is not a user token for this tenant and API.
+- 403 `{"message": "Forbidden"}`: the token lacks the route's scope (`blog.read`, `blog.write` or `blog.delete`).
+- 403 `{"error": "Blog API permission required"}`: the token is from another client, or the account is not assigned the **dliu API user** (`api.access`) role.
+- 404: no such post, file, method or path.
 - 409: too many posts created today.
 - 413: request or post too large, or too many files.
 - 415: the body was not sent as `Content-Type: application/json`.
 - 500 or 503: try again later; if it keeps failing, tell the owner.
-
-## Endpoint summary
-
-- `GET /api/me`: check the token.
-- `GET /api/posts`: list posts (no body text).
-- `POST /api/posts`: create a post (`title`, `body`, optional `status`).
-- `GET /api/posts/<id>`: read a post.
-- `PUT /api/posts/<id>`: change `title`, `body` and/or `status`.
-- `POST /api/posts/<id>/files`: start an upload (`name`, `size`, `type`).
-- `PUT /api/posts/<id>/files/<fileId>`: attach a finished upload (`name`).
-- `DELETE /api/posts/<id>/files/<fileId>`: remove a file.

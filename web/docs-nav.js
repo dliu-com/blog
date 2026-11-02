@@ -8,7 +8,7 @@ function link(className, href, text) {
   return a;
 }
 
-// Signed in, the header is crowded on phones, so the button is left out there (the footer links to Docs too).
+// Signed in, the header is crowded on phones, so the button shows only its icon there (still labelled Docs).
 function docsButton(signedIn = false) {
   const ns = 'http://www.w3.org/2000/svg';
   const svg = document.createElementNS(ns, 'svg');
@@ -24,7 +24,7 @@ function docsButton(signedIn = false) {
   label.className = 'label';
   label.textContent = 'Docs';
   const a = document.createElement('a');
-  a.className = signedIn ? 'button docs-link hide-narrow' : 'button docs-link';
+  a.className = signedIn ? 'button docs-link icon-narrow' : 'button docs-link';
   a.href = '/docs';
   a.title = 'How this blog works';
   a.setAttribute('aria-label', 'Docs');

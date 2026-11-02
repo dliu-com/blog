@@ -11,6 +11,8 @@ const app = new App();
 new BlogStack(app, 'BlogSite', {
   subdomain: app.node.tryGetContext('subdomain') || 'blog',
   trafficLogging: app.node.tryGetContext('trafficLogging') !== 'false',
+  // Turn off with -c microsoftApi=false (e.g. before the /blog/api-* parameters exist).
+  microsoftApi: String(app.node.tryGetContext('microsoftApi') ?? 'true') !== 'false',
   tags: { service: 'blog' },
   env: { account: process.env.CDK_DEFAULT_ACCOUNT, region },
 });

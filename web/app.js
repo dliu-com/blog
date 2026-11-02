@@ -90,7 +90,7 @@
     }
   }
 
-  // Signed in, the header is crowded on phones, so the button is left out there (the footer links to Docs too).
+  // Signed in, the header is crowded on phones, so the button shows only its icon there (still labelled Docs).
   function docsButton(signedIn = false) {
     const ns = 'http://www.w3.org/2000/svg';
     const svg = document.createElementNS(ns, 'svg');
@@ -106,7 +106,7 @@
     label.className = 'label';
     label.textContent = 'Docs';
     const a = document.createElement('a');
-    a.className = signedIn ? 'button docs-link hide-narrow' : 'button docs-link';
+    a.className = signedIn ? 'button docs-link icon-narrow' : 'button docs-link';
     a.href = '/docs';
     a.title = 'How this blog works';
     a.setAttribute('aria-label', 'Docs');
@@ -185,8 +185,44 @@
     { id: 'sad', emoji: '😢', label: 'Sad', mine: 'This post made you sad' },
   ];
 
+  // A visitor's page in the traffic monitor (private: Microsoft 365 sign-in).
+  const visitorUrl = (id) => `https://traffic.dliu.com/visitor?visitor=${encodeURIComponent(id)}`;
+
+  // Signed-in authors only: who reacted with what, each visitor ID linked to the traffic monitor.
+  function whoReacted(postId) {
+    const list = el('ul', { class: 'who-list' });
+    const note = el('p', { class: 'who-note' });
+    const section = el('div', { class: 'who-reacted', hidden: true }, [
+      el('h2', { text: 'Who reacted' }), note, list,
+    ]);
+    async function load() {
+      try {
+        const { reactions } = await api('GET', `/api/posts/${postId}/reactions`);
+        note.textContent = reactions.length
+          ? `${reactions.length} ${reactions.length === 1 ? 'visitor' : 'visitors'} · only signed-in authors see this`
+          : 'No reactions yet · only signed-in authors see this';
+        list.replaceChildren(...reactions.map((item) => {
+          const choice = REACTIONS.find((r) => r.id === item.reaction);
+          return el('li', {}, [
+            el('span', { class: 'who-reaction', title: choice ? choice.label : '' }, [
+              el('span', { class: 'emoji', 'aria-hidden': 'true', text: choice ? choice.emoji : '' }), choice ? choice.label : item.reaction,
+            ]),
+            el('a', { class: 'who-visitor', href: visitorUrl(item.visitor), target: '_blank', rel: 'noopener noreferrer', title: 'See this visitor in the traffic monitor', text: item.visitor }),
+            item.you ? el('span', { class: 'who-you', text: 'you' }) : null,
+            el('time', { datetime: item.updatedAt || '', text: fmtDateTime(item.updatedAt) }),
+          ]);
+        }));
+        section.hidden = false;
+      } catch {
+        section.hidden = true;
+      }
+    }
+    load();
+    return { section, load };
+  }
+
   // Hidden until the counts arrive, so a failure leaves the post as it was.
-  function reactionBar(postId) {
+  function reactionBar(postId, { signedIn = false } = {}) {
     const state = { counts: {}, mine: null };
     let busy = false;
     const status = el('p', { class: 'reaction-status', role: 'status' });
@@ -197,8 +233,9 @@
       ]);
       return { choice, button, count };
     });
+    const who = signedIn ? whoReacted(postId) : null;
     const section = el('section', { class: 'reactions', 'aria-label': 'Reactions', hidden: true }, [
-      el('div', { class: 'reaction-buttons' }, buttons.map((item) => item.button)), status,
+      el('div', { class: 'reaction-buttons' }, buttons.map((item) => item.button)), status, who && who.section,
     ]);
 
     function draw(error) {
@@ -226,6 +263,7 @@
       try {
         Object.assign(state, await api('POST', `/api/reactions/${postId}`, { reaction: next }));
         draw();
+        if (who) who.load();
       } catch (error) {
         Object.assign(state, before);
         draw(error.status === 429 ? error.message : 'Your reaction could not be saved. Please try again.');
@@ -266,7 +304,7 @@
           el('span', { class: 'size', text: fmtSize(file.size) }),
         ])))),
       ]) : null,
-      reactionBar(post.id),
+      reactionBar(post.id, { signedIn: Boolean(me && me.signedIn) }),
     ]));
     return undefined;
   }
@@ -316,7 +354,7 @@
         el('h1', { text: 'All posts' }),
         el('div', { class: 'row' }, [
           el('span', { class: 'muted', text: `${posts.filter((p) => p.status === 'published').length} published · ${plural(posts.filter((p) => p.status !== 'published').length, 'draft')}` }),
-          el('a', { class: 'button small', href: '/admin/tokens', text: 'API tokens', title: 'Let an AI agent or script post for you' }),
+          el('a', { class: 'button small', href: '/docs/api', text: 'API', title: 'Let an AI agent or script post for you with a Microsoft access token' }),
         ]),
       ]),
       notices,
@@ -326,129 +364,6 @@
       ]),
     ]);
     if (flash) notice(notices, flash);
-  }
-
-  // ---------- API tokens (for AI agents and scripts) ----------
-  const EXPIRY_CHOICES = [[7, '7 days'], [30, '30 days'], [90, '90 days'], [365, '1 year'], [0, 'Never']];
-
-  function copyButton(getText, label = 'Copy') {
-    const button = el('button', { type: 'button', class: 'small', text: label });
-    button.addEventListener('click', async () => {
-      try {
-        await navigator.clipboard.writeText(getText());
-        button.textContent = 'Copied';
-      } catch {
-        button.textContent = 'Select and copy';
-      }
-      setTimeout(() => { button.textContent = label; }, 2000);
-    });
-    return button;
-  }
-
-  const CREDENTIALS_FILE = '~/.dliu_credentials';
-  const SAVE_TOKEN_COMMAND = "(umask 077 && f=~/.dliu_credentials && printf 'Paste the blog token, then press Return: ' && read -rs t && echo && case \"$t\" in blog_*) ;; *) echo 'That is not a blog token' >&2; exit 1;; esac && touch \"$f\" && chmod 600 \"$f\" && T=\"$t\" awk '/^[[:space:]]*\\[/{s=($0 ~ /^[[:space:]]*\\[blog\\][[:space:]]*$/)} !s{print; last=$0} END{if (last != \"\") print \"\"; print \"[blog]\"; print \"token = \" ENVIRON[\"T\"]}' \"$f\" > \"$f.new\" && mv \"$f.new\" \"$f\" && { command -v pbcopy >/dev/null && pbcopy </dev/null; true; } && echo \"Saved to $f\")";
-
-  function agentInstructions() {
-    const site = location.origin;
-    return [
-      `You can create and update posts on my blog, ${site}, through its HTTP API.`,
-      `Before doing anything, read the API guide: ${site}/docs/api.md`,
-      `Your API token is the "token" key in the [blog] section of ${CREDENTIALS_FILE}. Use the helpers in the guide, which read it at request time.`,
-      'Never print, echo or cat the token or that file, never copy the token anywhere else and never put it in a post.',
-      'If the token is missing or the API says 401, stop and ask me for a new token. Never ask me to paste it into the chat.',
-      'Save new posts as drafts unless I ask you to publish them.',
-    ].join('\n');
-  }
-
-  function step(number, title, text) {
-    return [el('h2', { text: `${number}. ${title}` }), el('p', { class: 'muted', text })];
-  }
-
-  function newTokenPanel(created) {
-    const instructions = agentInstructions();
-    return el('section', { class: 'panel new-token', 'aria-live': 'polite' }, [
-      el('h2', { text: `Token “${created.name}” created` }),
-      el('p', { class: 'warn', text: 'It is shown only once. Anyone with it can write and publish posts as you until it expires or you revoke it.' }),
-      ...step(1, 'Run the save command', `On the computer where the agent runs, paste this into Terminal (bash or zsh). Like ~/.aws/credentials, it stores the token in ${CREDENTIALS_FILE} as "token" under [blog], readable only by your user account, and keeps any other sections. It then asks for the token without showing it.`),
-      el('div', { class: 'copy-row' }, [
-        el('input', { type: 'text', class: 'mono', readonly: true, value: SAVE_TOKEN_COMMAND, 'aria-label': 'Command to save the token', onfocus: (e) => e.target.select() }),
-        copyButton(() => SAVE_TOKEN_COMMAND, 'Copy command'),
-      ]),
-      ...step(2, 'Copy the token', 'Paste it at the command’s prompt and press Return.'),
-      el('div', { class: 'copy-row' }, [
-        el('input', { type: 'text', class: 'mono', readonly: true, value: created.token, 'aria-label': 'API token', onfocus: (e) => e.target.select() }),
-        copyButton(() => created.token, 'Copy token'),
-      ]),
-      ...step(3, 'Tell your agent', 'Paste this into the other AI agent. It does not contain the token, so it is safe to keep in the agent’s chat history.'),
-      el('textarea', { class: 'mono', rows: 7, readonly: true, value: instructions, 'aria-label': 'Instructions for your agent', onfocus: (e) => e.target.select() }),
-      el('div', { class: 'row' }, [copyButton(() => instructions, 'Copy instructions')]),
-    ]);
-  }
-
-  async function tokensPage(me, { created, flash } = {}) {
-    setTitle('API tokens');
-    const notices = el('div');
-    const { tokens } = await api('GET', '/api/tokens');
-
-    const name = el('input', { type: 'text', id: 'token-name', maxlength: 60, placeholder: 'e.g. Writing agent', autocomplete: 'off', required: true });
-    const expiry = el('select', { id: 'token-expiry' }, EXPIRY_CHOICES.map(([days, label]) => el('option', { value: String(days), text: label, selected: days === 90 })));
-    const generate = el('button', { type: 'submit', class: 'primary', text: 'Generate token' });
-    const form = el('form', { class: 'token-form' }, [
-      el('label', { for: 'token-name' }, [el('span', { text: 'Name' }), name]),
-      el('label', { for: 'token-expiry' }, [el('span', { text: 'Expires after' }), expiry]),
-      generate,
-    ]);
-    form.addEventListener('submit', async (event) => {
-      event.preventDefault();
-      generate.disabled = true;
-      try {
-        const token = await api('POST', '/api/tokens', { name: name.value, expiresInDays: Number(expiry.value) });
-        await tokensPage(me, { created: token });
-      } catch (error) {
-        generate.disabled = false;
-        notice(notices, error.message, { error: true });
-      }
-    });
-
-    const rows = tokens.map((token) => {
-      const revoke = async () => {
-        if (!confirm(`Revoke “${token.name}”? Anything using it will stop working at once.`)) return;
-        try {
-          await api('DELETE', `/api/tokens/${token.id}`);
-          await tokensPage(me, { flash: 'Token revoked.' });
-        } catch (error) {
-          notice(notices, error.message, { error: true });
-        }
-      };
-      return el('li', {}, [
-        el('div', { class: 'info' }, [
-          el('span', { class: 'title', text: token.name }),
-          el('div', { class: 'meta' }, [
-            el('span', { text: `Created ${fmtDate(token.createdAt)}` }),
-            el('span', { text: token.lastUsedAt ? `Last used ${fmtDateTime(token.lastUsedAt)}` : 'Never used' }),
-            el('span', { text: token.expiresAt ? `Expires ${fmtDate(token.expiresAt)}` : 'Never expires' }),
-          ]),
-        ]),
-        el('div', { class: 'actions' }, [el('button', { type: 'button', class: 'small danger', text: 'Revoke', onclick: revoke })]),
-      ]);
-    });
-
-    renderNav(me);
-    page([
-      el('a', { class: 'back', href: '/admin', text: '← All posts' }),
-      el('h1', { text: 'API tokens' }),
-      el('p', { class: 'lead muted' }, [
-        'A token lets another program, such as an AI agent, write, edit and publish posts and upload files through the API, without your browser. Tokens cannot delete posts or create other tokens. ',
-        el('a', { href: '/docs/api', text: 'How the API works' }),
-      ]),
-      notices,
-      created ? newTokenPanel(created) : null,
-      el('section', { class: 'panel' }, [el('h2', { text: 'Generate a token' }), form]),
-      el('h2', { class: 'section', text: tokens.length ? `Active tokens (${tokens.length})` : 'Active tokens' }),
-      rows.length ? el('ul', { class: 'posts admin tokens' }, rows) : el('p', { class: 'muted', text: 'No tokens yet.' }),
-    ]);
-    if (flash) notice(notices, flash);
-    if (!created) name.focus();
   }
 
   async function newPost() {
@@ -769,7 +684,8 @@
     try {
       if (path === '/admin') return await postsList(me);
       if (path === '/admin/new') return await newPost();
-      if (path === '/admin/tokens') return await tokensPage(me);
+      // The old API token page: blog tokens were replaced by Microsoft access tokens.
+      if (path === '/admin/tokens') return location.replace('/docs/api');
       const match = /^\/admin\/posts\/(\d{10})$/.exec(path);
       if (match) return await editor(me, match[1]);
       renderNav(me);

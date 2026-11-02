@@ -37,13 +37,9 @@ test('/docs/api is the API guide; /docs/api.md is served as a file', () => {
   expect(run('/docs/api.md').uri).toBe('/docs/api.md');
 });
 
-test('API tokens are copied from Authorization to x-blog-token on /api/ only', () => {
-  const bearer = { authorization: { value: 'Bearer blog_abc_def' } };
-  expect(run('/api/posts', bearer).headers['x-blog-token']).toEqual({ value: 'blog_abc_def' });
-  expect(run('/api/posts', { authorization: { value: 'Basic xyz' } }).headers['x-blog-token']).toBeUndefined();
-  expect(run('/auth/login', { ...bearer }).headers['x-blog-token']).toBeUndefined();
-  // A client can't smuggle in its own x-blog-token without a Bearer header.
-  expect(run('/api/posts', { 'x-blog-token': { value: 'forged' } }).headers['x-blog-token']).toBeUndefined();
+test('Authorization is no longer turned into a blog token header', () => {
+  const bearer = { authorization: { value: 'Bearer synthetic' } };
+  for (const uri of ['/api/posts', '/api/me', '/auth/login']) expect(run(uri, bearer).headers['x-blog-token']).toBeUndefined();
 });
 
 test("the viewer's IP replaces any x-blog-viewer on the API, for the reactions rate limit", () => {

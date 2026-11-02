@@ -99,20 +99,9 @@ textarea { resize: vertical; }
 .posts.admin .meta { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; }
 .posts.admin .actions { display: flex; gap: 6px; }
 
-/* ---------- API tokens ---------- */
+/* ---------- Shared text ---------- */
 .lead { margin: 4px 0 18px; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace !important; font-size: 13px !important; }
-.token-form { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; }
-.token-form label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 600; color: var(--muted); }
-.token-form label:first-child { flex: 1; min-width: 200px; }
-.token-form select { width: auto; }
-.new-token { border-color: var(--accent); margin-bottom: 16px; }
-.new-token h2 + .warn, .new-token .muted { margin-top: 0; }
-.new-token .warn { color: var(--danger); font-weight: 600; }
-.new-token textarea { margin-bottom: 8px; }
-.copy-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
-.copy-row input { flex: 1; min-width: 0; }
-h2.section { font-size: 15px; margin: 24px 0 8px; }
 
 /* ---------- Post page ---------- */
 .back { display: inline-block; margin-bottom: 12px; font-size: 14px; }
@@ -152,6 +141,16 @@ button.reaction[aria-pressed="true"] { border-color: var(--accent); background: 
 button.reaction[aria-pressed="true"] .count { color: var(--accent); }
 .reaction-status { margin: 10px 0 0; min-height: 1.4em; color: var(--muted); font-size: 14px; }
 .reaction-status.error { color: var(--danger); }
+.who-reacted { margin-top: 20px; padding: 14px 16px; border: 1px dashed var(--line); border-radius: var(--radius); background: var(--panel); }
+.who-reacted h2 { margin: 0; font-size: 15px; }
+.who-note { margin: 4px 0 8px; color: var(--muted); font-size: 13px; }
+.who-list { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.who-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; padding: 6px 0; border-top: 1px solid var(--line); }
+.who-list li:first-child { border-top: 0; }
+.who-reaction { display: inline-flex; gap: 6px; min-width: 6.5em; }
+.who-visitor { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; overflow-wrap: anywhere; }
+.who-you { padding: 0 8px; border-radius: 999px; background: #eef3fe; color: var(--accent); font-size: 12px; }
+.who-list time { margin-left: auto; color: var(--muted); font-size: 13px; }
 @media (max-width: 480px) { button.reaction .label { display: none; } }
 
 /* ---------- Editor ---------- */
@@ -209,7 +208,7 @@ button.reaction[aria-pressed="true"] .count { color: var(--accent); }
   #body, .editor .preview { min-height: 320px; }
   header.top nav { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   header.top nav .button { padding: 8px 10px; }
-  header.top nav .hide-narrow { display: none; }
+  header.top nav .icon-narrow .label { display: none; }
 }
 @media (max-width: 480px) {
   .brand .name { display: none; }

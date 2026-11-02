@@ -24,7 +24,7 @@ function documentClient() {
 const isTooLarge = (error) => error && error.name === 'ValidationException' && /size/i.test(error.message || '');
 
 function createStore({
-  client, table = process.env.TABLE_NAME, tokensTable = process.env.TOKENS_TABLE, reactionsTable = process.env.REACTIONS_TABLE,
+  client, table = process.env.TABLE_NAME, reactionsTable = process.env.REACTIONS_TABLE,
 } = {}) {
   const lib = require('@aws-sdk/lib-dynamodb');
   const send = (command) => (client || documentClient()).send(command);
@@ -72,48 +72,6 @@ function createStore({
       await send(new lib.DeleteCommand({ TableName: table, Key: { id } }));
     },
 
-    // API tokens live in their own small table (one item per token, keyed by token id).
-    async listTokens() {
-      const items = [];
-      let ExclusiveStartKey;
-      do {
-        const page = await send(new lib.ScanCommand({ TableName: tokensTable, ConsistentRead: true, ExclusiveStartKey }));
-        items.push(...(page.Items || []));
-        ExclusiveStartKey = page.LastEvaluatedKey;
-      } while (ExclusiveStartKey);
-      return items;
-    },
-
-    async getToken(id) {
-      const result = await send(new lib.GetCommand({ TableName: tokensTable, Key: { id }, ConsistentRead: true }));
-      return result.Item || null;
-    },
-
-    async putToken(item) {
-      await send(new lib.PutCommand({ TableName: tokensTable, Item: item, ConditionExpression: 'attribute_not_exists(id)' }));
-      return item;
-    },
-
-    // Only updates a token that still exists, so a revoked token is never brought back.
-    async touchToken(id, lastUsedAt) {
-      try {
-        await send(new lib.UpdateCommand({
-          TableName: tokensTable,
-          Key: { id },
-          UpdateExpression: 'SET lastUsedAt = :t',
-          ConditionExpression: 'attribute_exists(id)',
-          ExpressionAttributeValues: { ':t': lastUsedAt },
-        }));
-      } catch (error) {
-        if (!(error && error.name === 'ConditionalCheckFailedException')) throw error;
-      }
-    },
-
-    async deleteToken(id) {
-      const result = await send(new lib.DeleteCommand({ TableName: tokensTable, Key: { id }, ReturnValues: 'ALL_OLD' }));
-      return Boolean(result.Attributes);
-    },
-
     // Reactions table (pk, sk): per post, a "counts" item with one number per reaction and a
     // "visitor#<dl_vid>" item with each visitor's reaction; per IP hash, "viewer#<hash>" rate-limit windows.
     async getReactions(postId, visitor) {
@@ -123,6 +81,26 @@ function createStore({
         visitor ? send(new lib.GetCommand({ TableName: reactionsTable, Key: { pk, sk: `visitor#${visitor}` }, ConsistentRead: true })) : {},
       ]);
       return { counts: counts.Item || {}, mine: (mine.Item && mine.Item.reaction) || null };
+    },
+
+    // Every visitor's reaction to one post, for the signed-in author only.
+    async listReactionVisitors(postId) {
+      const items = [];
+      let ExclusiveStartKey;
+      do {
+        const page = await send(new lib.QueryCommand({
+          TableName: reactionsTable,
+          KeyConditionExpression: 'pk = :pk AND begins_with(sk, :prefix)',
+          ExpressionAttributeValues: { ':pk': `post#${postId}`, ':prefix': 'visitor#' },
+          ProjectionExpression: 'sk, reaction, updatedAt',
+          ExclusiveStartKey,
+        }));
+        for (const item of page.Items || []) {
+          items.push({ visitor: item.sk.slice('visitor#'.length), reaction: item.reaction, updatedAt: item.updatedAt || null });
+        }
+        ExclusiveStartKey = page.LastEvaluatedKey;
+      } while (ExclusiveStartKey);
+      return items;
     },
 
     // Moves the visitor from `from` to `to` (either may be null) and adjusts the counts in one transaction.

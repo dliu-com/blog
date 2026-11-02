@@ -126,6 +126,8 @@ async function handle(req, res) {
     return res.end('Access denied');
   }
   res.writeHead(200, { 'content-type': TYPES[path.extname(file)] || 'application/octet-stream', 'cache-control': 'no-store' });
+  // The deployment fills in the real API origin; there is none locally.
+  if (result.uri === '/docs/api.md') return res.end(fs.readFileSync(file, 'utf8').replaceAll('{{MICROSOFT_API_URL}}', '(the Microsoft API is not deployed locally)'));
   fs.createReadStream(file).pipe(res);
 }
 
