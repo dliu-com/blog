@@ -196,6 +196,14 @@ test('security headers allow the blog to be indexed', () => {
   expect(JSON.stringify(config.CustomHeadersConfig)).not.toContain('X-Robots-Tag');
 });
 
+test('pages may load only the shared dliu.com stylesheet folder from files.dliu.com, and no shared scripts', () => {
+  const [policy] = Object.values(template.findResources('AWS::CloudFront::ResponseHeadersPolicy')) as any[];
+  const csp = JSON.stringify(policy.Properties.ResponseHeadersPolicyConfig.SecurityHeadersConfig.ContentSecurityPolicy);
+  expect(csp).toContain("style-src 'self' https://files.dliu.com/dliu.com/ui/;");
+  expect(csp).toContain("img-src 'self' data: blob: https:;");
+  expect(csp).not.toMatch(/script-src[^;]*files\.dliu\.com/);
+});
+
 test('traffic logging can be turned off', () => {
   const quiet = Template.fromStack(new BlogStack(new App(), 'Quiet', { env, trafficLogging: false }));
   const [distribution] = Object.values(quiet.findResources('AWS::CloudFront::Distribution')) as any[];

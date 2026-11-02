@@ -39,7 +39,7 @@ test('every header shows a Docs button linking to /docs, on phones too', () => {
     expect([file, text.includes('hide-narrow')]).toEqual([file, false]);
   }
   const css = fs.readFileSync(path.join(WEB, 'style.css'), 'utf8');
-  expect(css).toContain('header.top nav .icon-narrow .label { display: none; }');
+  expect(css).toContain('.dl-nav .icon-narrow .label { display: none; }');
   expect(css).not.toMatch(/docs-link[^{]*\{[^}]*display:\s*none/);
 });
 

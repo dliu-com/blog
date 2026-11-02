@@ -19,19 +19,23 @@
   <meta itemprop="image" content="https://blog.dliu.com/share.png">
   <!-- /share -->
   <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://files.dliu.com/dliu.com/ui/v1/dl.css">
   <link rel="stylesheet" href="/style.css">
   <script src="/i18n.js" defer></script>
   <script src="/markdown.js" defer></script>
   <script src="/app.js" defer></script>
   <script src="https://traffic.dliu.com/t/s.js" async></script>
 </head>
-<body>
+<body class="dl-page">
   <img class="share-image" src="/share.png" alt="" hidden>
-  <header class="top">
-    <a class="brand" href="/" aria-label="DL blog home" data-zh-label="DL 博客首页"><img class="logo" src="/logo.svg" alt=""><span class="name" data-zh="DL 博客">DL blog</span></a>
-    <nav id="nav" aria-label="Site" data-zh-label="网站"></nav>
+  <header class="dl-header">
+    <a class="dl-brand" href="/"><img class="dl-logo" src="/logo.svg" alt="" width="32" height="32"><span data-zh="DL 博客">DL blog</span></a>
+    <nav class="dl-nav" id="nav" aria-label="Site" data-zh-label="网站"></nav>
   </header>
-  <main id="root"><p class="muted" data-zh="加载中…">Loading…</p></main>
-  <footer class="bottom"><a href="https://dliu.com">dliu.com</a> · <a href="/docs" data-zh="文档">Docs</a></footer>
+  <main id="root" class="dl-main dl-narrow"><p class="dl-muted" data-zh="加载中…">Loading…</p></main>
+  <footer class="dl-footer">
+    <a class="dl-footer-logo" href="https://dliu.com" aria-label="dliu.com"><img src="https://files.dliu.com/dliu.com/favicon.png" alt="" width="24" height="24"></a>
+    <a href="https://dliu.com">dliu.com</a> · <a href="/docs" data-zh="文档">Docs</a>
+  </footer>
 </body>
 </html>

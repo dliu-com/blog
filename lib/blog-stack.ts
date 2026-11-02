@@ -221,9 +221,10 @@ export class BlogStack extends Stack {
         contentSecurityPolicy: {
           // Uploads go straight to the content bucket; posts may show pictures from other https sites
           // and videos from video.dliu.com. Every page loads the traffic monitor's page script, which
-          // beacons to traffic.dliu.com.
+          // beacons to traffic.dliu.com. The shared dliu.com stylesheets come from files.dliu.com/dliu.com/ui/
+          // (the DL icon there is already covered by img-src https:).
           contentSecurityPolicy: Fn.join('', [
-            "default-src 'self'; script-src 'self' https://traffic.dliu.com; style-src 'self'; object-src 'none'; ",
+            "default-src 'self'; script-src 'self' https://traffic.dliu.com; style-src 'self' https://files.dliu.com/dliu.com/ui/; object-src 'none'; ",
             "img-src 'self' data: blob: https:; media-src 'self' blob:; ",
             "connect-src 'self' https://traffic.dliu.com https://", contentBucket.bucketRegionalDomainName, '; ',
             "frame-src https://video.dliu.com; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",

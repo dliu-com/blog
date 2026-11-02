@@ -377,7 +377,7 @@ draw();
 function show(scroll) {
   const current = TABS.includes(location.hash.slice(1)) ? location.hash.slice(1) : TABS[0];
   for (const id of TABS) document.getElementById(id).hidden = id !== current;
-  for (const tab of document.querySelectorAll('.info-tabs a')) {
+  for (const tab of document.querySelectorAll('.dl-tabs a')) {
     if (tab.dataset.tab === current) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }

@@ -15,7 +15,7 @@ function docsButton(signedIn = false) {
   const svg = document.createElementNS(ns, 'svg');
   svg.setAttribute('viewBox', '0 0 24 24');
   svg.setAttribute('aria-hidden', 'true');
-  svg.setAttribute('class', 'icon');
+  svg.setAttribute('class', 'dl-icon');
   for (const d of ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5', 'M9 13h6M9 17h6']) {
     const path = document.createElementNS(ns, 'path');
     path.setAttribute('d', d);
@@ -25,7 +25,7 @@ function docsButton(signedIn = false) {
   label.className = 'label';
   label.textContent = t('文档', 'Docs');
   const a = document.createElement('a');
-  a.className = signedIn ? 'button docs-link icon-narrow' : 'button docs-link';
+  a.className = signedIn ? 'dl-button docs-link icon-narrow' : 'dl-button docs-link';
   a.href = '/docs';
   a.title = t('这个博客是怎么运作的', 'How this blog works');
   a.setAttribute('aria-label', t('文档', 'Docs'));
@@ -34,18 +34,16 @@ function docsButton(signedIn = false) {
   return a;
 }
 
-// Same header as the blog. The hint cookie tells whether the author is signed in, without calling the API.
+// Same header as the blog (the shared dl-nav order, language switcher last). The hint cookie tells whether the
+// author is signed in, without calling the API.
 export function renderNav() {
   const nav = document.getElementById('nav');
   const signedIn = /(?:^|;\s*)blog_signed_in=1(?:;|$)/.test(document.cookie);
-  if (!signedIn) {
-    nav.replaceChildren(docsButton(), link('button primary sign-in', `/auth/login?return=${encodeURIComponent(location.pathname)}`, t('登录', 'Sign in')));
-    return;
-  }
-  nav.replaceChildren(
+  const items = signedIn ? [
+    link('dl-nav-link', '/admin', t('文章', 'Posts')),
     docsButton(true),
-    link('button', '/admin', t('文章', 'Posts')),
-    link('button primary', '/admin/new', t('＋ 写文章', '＋ New post')),
-    link('button', `/auth/logout?return=${encodeURIComponent(location.pathname)}`, t('退出', 'Sign out')),
-  );
+    link('dl-button dl-button-primary', '/admin/new', t('＋ 写文章', '＋ New post')),
+    link('dl-button', `/auth/logout?return=${encodeURIComponent(location.pathname)}`, t('退出', 'Sign out')),
+  ] : [docsButton(), link('dl-button dl-signin', `/auth/login?return=${encodeURIComponent(location.pathname)}`, t('登录', 'Sign in'))];
+  nav.replaceChildren(...items, ...[window.BlogI18n.switcher].filter(Boolean));
 }

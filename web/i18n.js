@@ -72,21 +72,23 @@
     if (switcher) switcher.update();
   }
 
-  // Header switcher: 中文 | English buttons; on narrow screens a 文/A button opens them.
+  // Header switcher, the shared dl-language markup (dl.css): 中文 | English buttons; on narrow screens a 文/A
+  // button opens them. It sits last in the header's dl-nav; the page scripts put it back after redrawing the nav.
   function mountSwitcher() {
-    const header = document.querySelector('header.top');
-    if (!header) return;
+    const nav = document.querySelector('.dl-header .dl-nav');
+    if (!nav) return;
     const box = document.createElement('div');
-    box.className = 'language';
+    box.className = 'dl-language';
     const toggle = document.createElement('button');
     toggle.type = 'button';
-    toggle.className = 'button language-toggle';
+    toggle.className = 'dl-button dl-language-toggle';
     toggle.textContent = '文/A';
-    toggle.setAttribute('aria-controls', 'languages');
+    toggle.setAttribute('aria-controls', 'dl-languages');
     toggle.setAttribute('aria-expanded', 'false');
+    toggle.setAttribute('aria-label', 'Language / 语言');
     const group = document.createElement('div');
-    group.id = 'languages';
-    group.className = 'languages';
+    group.id = 'dl-languages';
+    group.className = 'dl-languages';
     group.setAttribute('role', 'group');
     group.setAttribute('aria-label', 'Language / 语言');
     const setOpen = (open) => {
@@ -96,8 +98,8 @@
     const buttons = LANGUAGES.map(([value, label]) => {
       const button = document.createElement('button');
       button.type = 'button';
-      button.lang = value === 'zh' ? 'zh-CN' : 'en';
       button.dataset.language = value;
+      button.lang = value === 'zh' ? 'zh-CN' : 'en';
       button.textContent = label;
       button.addEventListener('click', () => {
         setOpen(false);
@@ -114,10 +116,10 @@
       if (event.key === 'Escape' && group.classList.contains('is-open')) { setOpen(false); toggle.focus(); }
     });
     box.append(toggle, group);
-    header.append(box);
+    nav.append(box);
     switcher = {
+      element: box,
       update() {
-        toggle.setAttribute('aria-label', t('语言', 'Language'));
         for (const button of buttons) button.setAttribute('aria-pressed', String(button.dataset.language === language));
       },
     };
@@ -125,6 +127,8 @@
 
   window.BlogI18n = {
     get language() { return language; }, t, locale, translateError, setLanguage, initialLanguage,
+    // The switcher element, for the page scripts to keep last in the nav.
+    get switcher() { return switcher ? switcher.element : null; },
   };
 
   const ready = () => { mountSwitcher(); setLanguage(language, { save: false }); };

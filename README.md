@@ -55,13 +55,17 @@ Every post gets an ID of the form `yyyymmddNN`: the UTC date it was created plus
    - Each file can be up to 100 MB, with up to 100 files per post.
 4. Click **Save draft** (or press Ctrl/⌘+S) to keep the post private, or **Publish** to make it public. On a published post, **Update** saves changes and **Unpublish (back to draft)** hides it again. **Delete post** removes the post and its files.
 
-Every page has a **Docs** button in the header. While you are signed in, the header also shows **Edit** (on a post page), **Posts** (all posts and drafts), **＋ New post** and **Sign out**; on narrow phones the Docs button then moves to the footer link to save room.
+Every page has a **Docs** button in the header. While you are signed in, the header also shows **Edit** (on a post page), **Posts** (all posts and drafts), **＋ New post** and **Sign out**; on narrow phones the Docs button then shows only its icon to save room.
 
 Images, PDFs, plain text, audio and video open in the browser. Other file types are always downloaded rather than displayed.
 
+## Look
+
+Every dliu.com site shares one light look from https://files.dliu.com/dliu.com/README.md. Each page loads the shared `ui/v1/dl.css` first (the docs pages then `ui/v1/dl-docs.css`), then `/style.css`, which keeps only blog-specific rules (editor, toolbar, reactions, post body, file lists) on the shared `--dl-*` variables. The header, footer, buttons, notices, fields, tabs and the language switch use the shared `dl-*` classes; no shared JavaScript is loaded. The header and favicon keep the blog's own logo (`web/logo.svg`, `web/favicon.ico`); every footer starts with the shared DL logo from `files.dliu.com/dliu.com/favicon.png`, linking to dliu.com. The CSP allows stylesheets only from `'self'` and `https://files.dliu.com/dliu.com/ui/`. `test/shared-ui.test.js` guards this.
+
 ## Languages
 
-The site is in Chinese and English. It follows the browser's language (any `zh-*` is Chinese, everything else English) until the reader picks one with the 中文 / English switch in the header (文/A on phones); that choice is saved in the browser (`localStorage`, key `blog-language`). `web/i18n.js` holds the language, the `t(中文, English)` helper and the Chinese text for API errors; static text in the HTML pages carries its Chinese in `data-zh` attributes. Posts are shown as written, and the agent guide `/docs/api.md` (and `/docs/api`) stays in English.
+The site is in Chinese and English. It follows the browser's language (any `zh-*` is Chinese, everything else English) until the reader picks one with the 中文 / English switch at the end of the header (the shared `dl-language` markup; 文/A on phones); that choice is saved in the browser (`localStorage`, key `blog-language`). `web/i18n.js` holds the language, the `t(中文, English)` helper and the Chinese text for API errors; static text in the HTML pages carries its Chinese in `data-zh` attributes. Posts are shown as written, and the agent guide `/docs/api.md` (and `/docs/api`) stays in English.
 
 ## API for AI agents and scripts
 
@@ -83,7 +87,7 @@ Every route also needs the Microsoft-assigned user role **dliu API user** (`api.
 
 ```
 web/            frontend (vanilla JS, no build step): index.html, app.js, i18n.js (Chinese/English), markdown.js, style.css,
-                docs.html, docs.js, docs.css, diagram.js (the /docs page),
+                docs.html, docs.js, diagram.js (the /docs page; shared dl.css + dl-docs.css),
                 docs-api.html, docs-api.js, docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy)
 lambda/invalidate/ clears deleted or changed media from CloudFront (S3 event -> SQS -> this function)
 lambda/api/     authoring API: routes (index.js), managed API routes and checks (routes.json, api-access.js), posts,
@@ -91,7 +95,7 @@ lambda/api/     authoring API: routes (index.js), managed API routes and checks 
 functions/      CloudFront viewer-request function (routing + old-link redirects)
 lib/, bin/      AWS CDK stack (BlogSite)
 scripts/        dev server with in-memory store, set-secrets.sh, api-client.js (managed API client)
-test/           Jest tests (API, S3 signing, routing, markdown sanitising, languages, stack)
+test/           Jest tests (API, S3 signing, routing, markdown sanitising, languages, shared UI, stack)
 archive/        the previous WordPress Docker setup, kept for reference only
 ```
 

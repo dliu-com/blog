@@ -69,13 +69,13 @@
   const signInUrl = () => `/auth/login?return=${encodeURIComponent(location.pathname + location.search)}`;
 
   function notice(container, message, { error = false, link } = {}) {
-    container.replaceChildren(message ? el('div', { class: `notice${error ? ' error' : ''}`, role: error ? 'alert' : 'status' }, [
+    container.replaceChildren(message ? el('div', { class: `dl-notice${error ? ' dl-error' : ''}`, role: error ? 'alert' : 'status' }, [
       el('span', { text: message }), link ? ' ' : null, link ? el('a', { href: link.href, text: link.text }) : null,
     ]) : '');
   }
 
   function page(main, { wide = false } = {}) {
-    root.className = wide ? 'wide' : '';
+    root.className = wide ? 'dl-main' : 'dl-main dl-narrow';
     root.replaceChildren(...[].concat(main).filter(Boolean));
   }
 
@@ -99,7 +99,7 @@
     const svg = document.createElementNS(ns, 'svg');
     svg.setAttribute('viewBox', '0 0 24 24');
     svg.setAttribute('aria-hidden', 'true');
-    svg.setAttribute('class', 'icon');
+    svg.setAttribute('class', 'dl-icon');
     for (const d of ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5', 'M9 13h6M9 17h6']) {
       const path = document.createElementNS(ns, 'path');
       path.setAttribute('d', d);
@@ -109,7 +109,7 @@
     label.className = 'label';
     label.textContent = t('文档', 'Docs');
     const a = document.createElement('a');
-    a.className = signedIn ? 'button docs-link icon-narrow' : 'button docs-link';
+    a.className = signedIn ? 'dl-button docs-link icon-narrow' : 'dl-button docs-link';
     a.href = '/docs';
     a.title = t('这个博客是怎样运作的', 'How this blog works');
     a.setAttribute('aria-label', t('文档', 'Docs'));
@@ -118,19 +118,17 @@
     return a;
   }
 
-  // Header buttons: Docs for everyone; a clear Sign in for readers; New post, Posts and Sign out for the author.
+  // Header (the shared dl-nav order): text links, Docs, the main action, then Sign in or Sign out, and the
+  // language switcher last. Docs for everyone; a clear Sign in for readers; Edit, Posts, New post and Sign out for the author.
   function renderNav(me, { editId } = {}) {
-    if (!me.signedIn) {
-      nav.replaceChildren(docsButton(), el('a', { class: 'button primary sign-in', href: signInUrl(), text: t('登录', 'Sign in') }));
-      return;
-    }
-    nav.replaceChildren(...[
+    const items = me.signedIn ? [
+      editId ? el('a', { class: 'dl-nav-link', href: `/admin/posts/${editId}`, text: t('编辑', 'Edit') }) : null,
+      el('a', { class: 'dl-nav-link', href: '/admin', text: t('文章', 'Posts'), 'aria-current': location.pathname.replace(/\/$/, '') === '/admin' ? 'page' : null }),
       docsButton(true),
-      editId ? el('a', { class: 'button', href: `/admin/posts/${editId}`, text: t('编辑', 'Edit') }) : null,
-      el('a', { class: 'button', href: '/admin', text: t('文章', 'Posts') }),
-      el('a', { class: 'button primary', href: '/admin/new', text: t('＋ 写文章', '＋ New post') }),
-      el('a', { class: 'button', href: '/auth/logout?return=/', text: t('退出', 'Sign out') }),
-    ].filter(Boolean));
+      el('a', { class: 'dl-button dl-button-primary', href: '/admin/new', text: t('＋ 写文章', '＋ New post'), 'aria-current': location.pathname === '/admin/new' ? 'page' : null }),
+      el('a', { class: 'dl-button', href: '/auth/logout?return=/', text: t('退出', 'Sign out') }),
+    ] : [docsButton(), el('a', { class: 'dl-button dl-signin', href: signInUrl(), text: t('登录', 'Sign in') })];
+    nav.replaceChildren(...items.filter(Boolean), ...[window.BlogI18n.switcher].filter(Boolean));
   }
 
   // ---------- public site ----------
@@ -164,7 +162,7 @@
     page([
       el('div', { class: 'row spread head' }, [
         el('h1', { text: heading }),
-        month || search ? el('a', { href: '/', text: t('所有文章', 'All posts') }) : el('span', { class: 'muted', text: posts.length ? postCount(posts.length) : '' }),
+        month || search ? el('a', { href: '/', text: t('所有文章', 'All posts') }) : el('span', { class: 'dl-muted', text: posts.length ? postCount(posts.length) : '' }),
       ]),
       posts.length
         ? el('ul', { class: 'posts' }, posts.map((post) => el('li', {}, [
@@ -233,7 +231,7 @@
     const status = el('p', { class: 'reaction-status', role: 'status' });
     const buttons = REACTIONS.map((choice) => {
       const count = el('span', { class: 'count' });
-      const button = el('button', { type: 'button', class: 'reaction', onclick: () => choose(choice.id) }, [
+      const button = el('button', { type: 'button', class: 'dl-button reaction', onclick: () => choose(choice.id) }, [
         el('span', { class: 'emoji', 'aria-hidden': 'true', text: choice.emoji }), el('span', { class: 'label', text: tr(choice.label) }), count,
       ]);
       return { choice, button, count };
@@ -253,7 +251,7 @@
       }
       const mine = REACTIONS.find((choice) => choice.id === state.mine);
       status.textContent = error || (mine ? tr(mine.mine) : '');
-      status.classList.toggle('error', Boolean(error));
+      status.classList.toggle('dl-error', Boolean(error));
     }
 
     async function choose(id) {
@@ -347,9 +345,9 @@
           ]),
         ]),
         el('div', { class: 'actions' }, [
-          el('a', { class: 'button small', href: edit, text: t('编辑', 'Edit') }),
-          published ? el('a', { class: 'button small', href: postPath(post.id), text: t('查看', 'View') }) : null,
-          el('button', { type: 'button', class: 'small danger', text: t('删除', 'Delete'), onclick: remove }),
+          el('a', { class: 'dl-button dl-button-small', href: edit, text: t('编辑', 'Edit') }),
+          published ? el('a', { class: 'dl-button dl-button-small', href: postPath(post.id), text: t('查看', 'View') }) : null,
+          el('button', { type: 'button', class: 'dl-button dl-button-small dl-button-danger', text: t('删除', 'Delete'), onclick: remove }),
         ]),
       ]);
     });
@@ -362,14 +360,14 @@
       el('div', { class: 'row spread head' }, [
         el('h1', { text: t('所有文章', 'All posts') }),
         el('div', { class: 'row' }, [
-          el('span', { class: 'muted', text: t(`${publishedCount} 篇已发布 · ${draftCount} 篇草稿`, `${publishedCount} published · ${plural(draftCount, 'draft')}`) }),
-          el('a', { class: 'button small', href: '/docs/api', text: 'API', title: t('让 AI 代理或脚本用 Microsoft 访问令牌替你发文章', 'Let an AI agent or script post for you with a Microsoft access token') }),
+          el('span', { class: 'dl-muted', text: t(`${publishedCount} 篇已发布 · ${draftCount} 篇草稿`, `${publishedCount} published · ${plural(draftCount, 'draft')}`) }),
+          el('a', { class: 'dl-button dl-button-small', href: '/docs/api', text: 'API', title: t('让 AI 代理或脚本用 Microsoft 访问令牌替你发文章', 'Let an AI agent or script post for you with a Microsoft access token') }),
         ]),
       ]),
       notices,
       rows.length ? el('ul', { class: 'posts admin' }, rows) : el('div', { class: 'empty' }, [
         el('p', { text: t('还没有文章。', 'No posts yet.') }),
-        el('a', { class: 'button primary', href: '/admin/new', text: t('写第一篇文章', 'Write your first post') }),
+        el('a', { class: 'dl-button dl-button-primary', href: '/admin/new', text: t('写第一篇文章', 'Write your first post') }),
       ]),
     ]);
     if (flash) notice(notices, flash);
@@ -395,10 +393,10 @@
     const wordCount = el('span');
     const savedAt = el('span');
     const permalink = el('div', { class: 'permalink' });
-    const publishBox = el('section', { class: 'panel publish' });
+    const publishBox = el('section', { class: 'dl-panel publish' });
     const fileList = el('ul', { class: 'files' });
     const mediaInput = el('input', { type: 'file', multiple: true, hidden: true });
-    const attachInput = el('input', { type: 'file', multiple: true, class: 'screen-reader-text', id: 'attach-files' });
+    const attachInput = el('input', { type: 'file', multiple: true, class: 'dl-visually-hidden', id: 'attach-files' });
 
     const setDirty = () => {
       dirty = true;
@@ -430,12 +428,12 @@
           el('dt', { text: t('文章 ID', 'Post ID') }), el('dd', { text: post.id }),
         ].flat()),
         el('div', { class: 'publish-actions' }, [
-          el('button', { type: 'button', class: 'primary', text: published ? t('更新', 'Update') : t('发布', 'Publish'), onclick: () => save('published') }),
+          el('button', { type: 'button', class: 'dl-button dl-button-primary', text: published ? t('更新', 'Update') : t('发布', 'Publish'), onclick: () => save('published') }),
           published
-            ? el('button', { type: 'button', text: t('取消发布（转回草稿）', 'Unpublish (back to draft)'), onclick: () => save('draft') })
-            : el('button', { type: 'button', text: t('保存草稿', 'Save draft'), onclick: () => save('draft') }),
-          published ? el('a', { class: 'button', href: postPath(post.id), text: t('查看文章', 'View post') }) : null,
-          el('button', { type: 'button', class: 'link danger delete', text: t('删除文章', 'Delete post'), onclick: trash }),
+            ? el('button', { type: 'button', class: 'dl-button', text: t('取消发布（转回草稿）', 'Unpublish (back to draft)'), onclick: () => save('draft') })
+            : el('button', { type: 'button', class: 'dl-button', text: t('保存草稿', 'Save draft'), onclick: () => save('draft') }),
+          published ? el('a', { class: 'dl-button', href: postPath(post.id), text: t('查看文章', 'View post') }) : null,
+          el('button', { type: 'button', class: 'dl-button dl-button-link dl-button-danger delete', text: t('删除文章', 'Delete post'), onclick: trash }),
         ]),
       );
     }
@@ -471,8 +469,8 @@
           el('a', { class: 'name', href: file.url, target: '_blank', rel: 'noopener', text: file.name }),
           el('div', { class: 'file-actions' }, [
             el('span', { text: fmtSize(file.size) }),
-            el('button', { type: 'button', class: 'link', text: t('插入', 'Insert'), onclick: () => insertAtCursor(snippet(file), { block: true }) }),
-            el('button', { type: 'button', class: 'link danger', text: t('移除', 'Remove'), onclick: () => removeFile(file) }),
+            el('button', { type: 'button', class: 'dl-button dl-button-link', text: t('插入', 'Insert'), onclick: () => insertAtCursor(snippet(file), { block: true }) }),
+            el('button', { type: 'button', class: 'dl-button dl-button-link dl-button-danger', text: t('移除', 'Remove'), onclick: () => removeFile(file) }),
           ]),
         ]),
       ])), ...pending);
@@ -667,7 +665,7 @@
           title,
           permalink,
           el('div', { class: 'editor' }, [
-            el('div', { class: 'editor-bar' }, [toolbar, el('div', { class: 'tabs', role: 'tablist' }, [writeTab, previewTab]), mediaInput]),
+            el('div', { class: 'editor-bar' }, [toolbar, el('div', { class: 'dl-segmented', role: 'tablist' }, [writeTab, previewTab]), mediaInput]),
             body,
             preview,
             el('div', { class: 'editor-status' }, [wordCount, savedAt]),
@@ -675,9 +673,9 @@
         ]),
         el('div', {}, [
           publishBox,
-          el('section', { class: 'panel' }, [
+          el('section', { class: 'dl-panel' }, [
             el('h2', { text: t('文件', 'Files') }),
-            el('p', { class: 'muted small', text: t('图片和文件会显示在文章末尾，除非已插入到正文中。', 'Pictures and files shown at the end of the post, unless inserted into the text.') }),
+            el('p', { class: 'dl-muted small', text: t('图片和文件会显示在文章末尾，除非已插入到正文中。', 'Pictures and files shown at the end of the post, unless inserted into the text.') }),
             attachInput, dropzone, fileList,
           ]),
         ]),
