@@ -59,6 +59,10 @@ Every page has a **Docs** button in the header. While you are signed in, the hea
 
 Images, PDFs, plain text, audio and video open in the browser. Other file types are always downloaded rather than displayed.
 
+## Languages
+
+The site is in Chinese and English. It follows the browser's language (any `zh-*` is Chinese, everything else English) until the reader picks one with the 中文 / English switch in the header (文/A on phones); that choice is saved in the browser (`localStorage`, key `blog-language`). `web/i18n.js` holds the language, the `t(中文, English)` helper and the Chinese text for API errors; static text in the HTML pages carries its Chinese in `data-zh` attributes. Posts are shown as written, and the agent guide `/docs/api.md` (and `/docs/api`) stays in English.
+
 ## API for AI agents and scripts
 
 Agents and scripts write posts through a separate managed API, not the website. It accepts Microsoft-issued user access tokens from Central Microsoft sign-in at https://auth.dliu.com, which also documents how to obtain, save and send them (https://auth.dliu.com/docs/api). The blog has no API tokens of its own any more; `/admin/tokens` now redirects to the API guide.
@@ -78,7 +82,7 @@ Every route also needs the Microsoft-assigned user role **dliu API user** (`api.
 ## Repository layout
 
 ```
-web/            frontend (vanilla JS, no build step): index.html, app.js, markdown.js, style.css,
+web/            frontend (vanilla JS, no build step): index.html, app.js, i18n.js (Chinese/English), markdown.js, style.css,
                 docs.html, docs.js, docs.css, diagram.js (the /docs page),
                 docs-api.html, docs-api.js, docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy)
 lambda/invalidate/ clears deleted or changed media from CloudFront (S3 event -> SQS -> this function)
@@ -87,7 +91,7 @@ lambda/api/     authoring API: routes (index.js), managed API routes and checks 
 functions/      CloudFront viewer-request function (routing + old-link redirects)
 lib/, bin/      AWS CDK stack (BlogSite)
 scripts/        dev server with in-memory store, set-secrets.sh, api-client.js (managed API client)
-test/           Jest tests (API, S3 signing, routing, markdown sanitising, stack)
+test/           Jest tests (API, S3 signing, routing, markdown sanitising, languages, stack)
 archive/        the previous WordPress Docker setup, kept for reference only
 ```
 

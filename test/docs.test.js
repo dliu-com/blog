@@ -23,7 +23,7 @@ test('the API origin is filled in at deploy time, never hard-coded', () => {
 });
 
 test('no retired blog token instructions remain in the site', () => {
-  const files = ['docs/api.md', 'docs-api.html', 'docs.html', 'index.html', 'app.js', 'docs.js', 'docs-api.js'];
+  const files = ['docs/api.md', 'docs-api.html', 'docs.html', 'index.html', 'app.js', 'docs.js', 'docs-api.js', 'i18n.js'];
   for (const file of files) {
     const text = fs.readFileSync(path.join(WEB, file), 'utf8');
     for (const retired of ['/api/tokens', 'x-blog-token', 'dliu_credentials', 'blog_0123', 'Generate token', 'Copy command']) {

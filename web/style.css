@@ -88,6 +88,14 @@ textarea { resize: vertical; }
 .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); }
 .pill.published { background: #eef9f1; border-color: #b7e1c1; color: var(--ok); }
 
+/* ---------- Language switcher: 中文 | English; on narrow screens 文/A opens them ---------- */
+.language { position: relative; display: flex; }
+.languages { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--panel-2); }
+.languages button { border: 0; border-left: 1px solid var(--line); border-radius: 0; padding: 7px 10px; font-size: 13px; }
+.languages button:first-child { border-left: 0; }
+.languages button[aria-pressed="true"] { background: #eef3fe; color: var(--accent); font-weight: 600; }
+.button.language-toggle { display: none; padding: 8px 10px; font-size: 13px; }
+
 /* ---------- Post list (home and admin) ---------- */
 .posts { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
 .posts li { display: flex; align-items: baseline; gap: 16px; padding: 14px 2px; border-bottom: 1px solid var(--line); }
@@ -209,6 +217,16 @@ button.reaction[aria-pressed="true"] .count { color: var(--accent); }
   header.top nav { gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
   header.top nav .button { padding: 8px 10px; }
   header.top nav .icon-narrow .label { display: none; }
+}
+@media (max-width: 600px) {
+  .button.language-toggle { display: inline-flex; }
+  .languages { display: none; }
+  .languages.is-open {
+    display: flex; flex-direction: column; position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; min-width: 120px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  }
+  .languages.is-open button { border-left: 0; border-top: 1px solid var(--line); padding: 10px 14px; justify-content: flex-start; }
+  .languages.is-open button:first-child { border-top: 0; }
 }
 @media (max-width: 480px) {
   .brand .name { display: none; }

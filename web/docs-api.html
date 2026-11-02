@@ -9,27 +9,29 @@
   <link rel="alternate" type="text/markdown" href="/docs/api.md" title="API guide (Markdown)">
   <link rel="stylesheet" href="/style.css">
   <link rel="stylesheet" href="/docs.css">
+  <script src="/i18n.js" defer></script>
   <script src="/markdown.js" defer></script>
   <script type="module" src="/docs-api.js"></script>
   <script src="https://traffic.dliu.com/t/s.js" async></script>
 </head>
 <body>
   <header class="top">
-    <a class="brand" href="/" aria-label="DL blog home"><img class="logo" src="/logo.svg" alt=""><span class="name">DL blog</span></a>
-    <nav id="nav" aria-label="Site"></nav>
+    <a class="brand" href="/" aria-label="DL blog home" data-zh-label="DL 博客首页"><img class="logo" src="/logo.svg" alt=""><span class="name" data-zh="DL 博客">DL blog</span></a>
+    <nav id="nav" aria-label="Site" data-zh-label="网站"></nav>
   </header>
   <main class="docs-main">
-    <nav class="info-tabs" aria-label="Docs sections">
-      <a href="/docs#architecture">Technical architecture</a>
-      <a href="/docs#cost">Cost</a>
-      <a href="/docs#security">Security</a>
+    <nav class="info-tabs" aria-label="Docs sections" data-zh-label="文档章节">
+      <a href="/docs#architecture" data-zh="技术架构">Technical architecture</a>
+      <a href="/docs#cost" data-zh="运行成本">Cost</a>
+      <a href="/docs#security" data-zh="安全">Security</a>
       <a href="/docs/api" aria-current="page">API</a>
     </nav>
     <article class="docs api-doc">
       <p class="agent-note">AI agents: read the plain-text version of this guide at <a href="/docs/api.md">https://blog.dliu.com/docs/api.md</a>. Authentication is required: set it up with the <a href="https://auth.dliu.com/docs/api">Auth API documentation</a>.</p>
-      <div id="api-doc" class="prose"><p class="muted">Loading…</p></div>
+      <p class="api-language-note" data-zh="此 API 指南只有英文版。" data-en="" hidden></p>
+      <div id="api-doc" class="prose"><p class="muted" data-zh="加载中…">Loading…</p></div>
     </article>
   </main>
-  <footer class="bottom"><a href="https://dliu.com">dliu.com</a> · <a href="/">DL blog</a></footer>
+  <footer class="bottom"><a href="https://dliu.com">dliu.com</a> · <a href="/" data-zh="DL 博客">DL blog</a></footer>
 </body>
 </html>

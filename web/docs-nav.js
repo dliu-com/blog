@@ -1,4 +1,5 @@
 // Header for the docs pages: the same buttons as the blog.
+const { t } = window.BlogI18n;
 
 function link(className, href, text) {
   const a = document.createElement('a');
@@ -22,12 +23,12 @@ function docsButton(signedIn = false) {
   }
   const label = document.createElement('span');
   label.className = 'label';
-  label.textContent = 'Docs';
+  label.textContent = t('文档', 'Docs');
   const a = document.createElement('a');
   a.className = signedIn ? 'button docs-link icon-narrow' : 'button docs-link';
   a.href = '/docs';
-  a.title = 'How this blog works';
-  a.setAttribute('aria-label', 'Docs');
+  a.title = t('这个博客是怎么运作的', 'How this blog works');
+  a.setAttribute('aria-label', t('文档', 'Docs'));
   a.append(svg, label);
   if (/^\/docs(\/|$)/.test(location.pathname)) a.setAttribute('aria-current', 'page');
   return a;
@@ -38,13 +39,13 @@ export function renderNav() {
   const nav = document.getElementById('nav');
   const signedIn = /(?:^|;\s*)blog_signed_in=1(?:;|$)/.test(document.cookie);
   if (!signedIn) {
-    nav.replaceChildren(docsButton(), link('button primary sign-in', `/auth/login?return=${encodeURIComponent(location.pathname)}`, 'Sign in'));
+    nav.replaceChildren(docsButton(), link('button primary sign-in', `/auth/login?return=${encodeURIComponent(location.pathname)}`, t('登录', 'Sign in')));
     return;
   }
   nav.replaceChildren(
     docsButton(true),
-    link('button', '/admin', 'Posts'),
-    link('button primary', '/admin/new', '＋ New post'),
-    link('button', `/auth/logout?return=${encodeURIComponent(location.pathname)}`, 'Sign out'),
+    link('button', '/admin', t('文章', 'Posts')),
+    link('button primary', '/admin/new', t('＋ 写文章', '＋ New post')),
+    link('button', `/auth/logout?return=${encodeURIComponent(location.pathname)}`, t('退出', 'Sign out')),
   );
 }
