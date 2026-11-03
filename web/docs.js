@@ -2,11 +2,12 @@ import { flow, tiers, stats, table, callout, more, icon } from './diagram.js';
 import { renderNav } from './docs-nav.js';
 
 const { t } = window.BlogI18n;
-const TABS = ['architecture', 'cost', 'security', 'health'];
+const TABS = ['architecture', 'cost', 'security', 'api', 'health'];
 const TITLES = {
-  architecture: () => t('技术架构', 'Technical architecture'),
+  architecture: () => t('架构', 'Architecture'),
   cost: () => t('运行成本', 'Cost'),
   security: () => t('安全', 'Security'),
+  api: () => 'API',
   health: () => t('测试', 'Testing'),
 };
 const num = (text) => ({ text, className: 'num' });
@@ -129,7 +130,7 @@ function architecture(root) {
       { icon: 'shield', title: t('API Gateway', 'API Gateway'), text: t('检查签名、颁发者、受众、有效期和该路由的权限', 'Checks signature, issuer, audience, expiry and the route’s permission') },
       { icon: 'lambda', title: t('API', 'API'), text: t('再检查租户、客户端、用户、api.access 角色和权限，然后保存文章', 'Checks tenant, client, user, the api.access role and the permission again, then saves the post') },
     ],
-    note: t('Microsoft API 只提供九个文章和文件路由（见 /docs/api），不提供心情、登录或网站页面，也从不读取 Cookie。网站的 /api/* 只认会话 Cookie，不接受持有者令牌。', 'The Microsoft API serves only nine post and file routes (see /docs/api), never reactions, sign-in or site pages, and never reads cookies. The website’s /api/* knows only the session cookie and accepts no bearer tokens.'),
+    note: t('Microsoft API 只提供九个文章和文件路由（见 /docs#api），不提供心情、登录或网站页面，也从不读取 Cookie。网站的 /api/* 只认会话 Cookie，不接受持有者令牌。', 'The Microsoft API serves only nine post and file routes (see /docs#api), never reactions, sign-in or site pages, and never reads cookies. The website’s /api/* knows only the session cookie and accepts no bearer tokens.'),
   }));
 
   add('h2', t('心情', 'Reactions'));
@@ -151,14 +152,14 @@ function architecture(root) {
     [mono(t('/、/admin…', '/, /admin…')), t('网站存储桶：index.html（单页应用）', 'Site bucket: index.html (single-page app)'), t('每次访问都重新验证', 'Revalidated on every visit')],
     [mono(t('/<postId>', '/<postId>')), t('API Lambda：带文章分享标签的 index.html；如果文章未发布或 Lambda 出错，则用网站存储桶的 index.html', 'API Lambda: index.html with the post’s share tags; site bucket’s index.html if the post isn’t published or the Lambda fails'), t('CloudFront 缓存五分钟，浏览器重新验证', 'Five minutes at CloudFront, revalidated by browsers')],
     [mono(t('/docs', '/docs')), t('网站存储桶：docs.html', 'Site bucket: docs.html'), t('每次访问都重新验证', 'Revalidated on every visit')],
-    [mono(t('/docs/api、/docs/api.md', '/docs/api, /docs/api.md')), t('网站存储桶：API 指南的网页版和供助手使用的 Markdown 版', 'Site bucket: API guide as a page and as Markdown for agents'), t('网页每次访问都重新验证；Markdown 与下方脚本相同', 'Page revalidated on every visit; Markdown as for scripts below')],
+    [mono(t('/docs/api.md、/docs/health.md', '/docs/api.md, /docs/health.md')), t('网站存储桶：供助手和 status.dliu.com 使用的 Markdown 技术版本（/docs#api 和 /docs#health 是本页的标签）', 'Site bucket: the Markdown technical versions for agents and status.dliu.com (/docs#api and /docs#health are tabs of this page)'), t('与下方脚本相同', 'As for scripts below')],
     [mono(t('脚本、样式、图片', 'Scripts, styles, images')), t('网站存储桶', 'Site bucket'), t('CloudFront 缓存一天，每次部署时清除；浏览器缓存五分钟', 'A day at CloudFront, cleared by each deploy; five minutes in browsers')],
     [mono(t('/content/index.json', '/content/index.json')), t('内容存储桶：已发布文章列表', 'Content bucket: list of published posts'), t('重新验证，所以改动立即可见', 'Revalidated, so changes show at once')],
     [mono(t('/content/posts/<postId>.json', '/content/posts/<postId>.json')), t('内容存储桶：一篇已发布文章', 'Content bucket: one published post'), t('重新验证', 'Revalidated')],
     [mono(t('/media/<postId>/<file>/<name>', '/media/<postId>/<file>/<name>')), t('内容存储桶：图片和附件', 'Content bucket: pictures and attachments'), t('一天；删除后约两分钟内从 CloudFront 清除', 'A day; deletes cleared at CloudFront within about two minutes')],
     [mono(t('/api/reactions/<postId>', '/api/reactions/<postId>')), t('API Lambda：任何人都能看心情计数；无需账号即可点心情', 'API Lambda: reaction counts for anyone; react without an account'), t('从不缓存', 'Never cached')],
     [mono(t('/api/*、/auth/*', '/api/*, /auth/*')), t('API Lambda（仅限已登录的作者）', 'API Lambda (signed-in author only)'), t('从不缓存', 'Never cached')],
-    [mono(t('Microsoft API', 'Microsoft API')), t('API Gateway → API Lambda：供助手使用的文章和文件路由，地址见 /docs/api', 'API Gateway → API Lambda: post and file routes for agents, address in /docs/api'), t('从不缓存', 'Never cached')],
+    [mono(t('Microsoft API', 'Microsoft API')), t('API Gateway → API Lambda：供助手使用的文章和文件路由，地址见 /docs/api.md', 'API Gateway → API Lambda: post and file routes for agents, address in /docs/api.md'), t('从不缓存', 'Never cached')],
   ]));
   add('p', t('CloudFront 只有在文件被改动或删除、而没有其他机制清除时才需要自动清除。每个月免费的 1,000 个清除路径由所有 dliu.com 网站共用，所以博客只为 media/ 使用：删除和控制台改动先在队列中等待一分钟，再合并为一个路径（一个文件夹或一篇文章用一个通配符），通常每月只用几个。', 'CloudFront only needs automatic clearing where a file can change or be deleted without anything else clearing it. The 1,000 free invalidation paths a month are shared by every dliu.com site, so the blog uses them for media/ only: deletes and console changes wait a minute in a queue and are cleared together, one wildcard per file folder or per post, usually a few paths a month.'));
   root.append(table([t('文件', 'Files'), t('CloudFront 保留', 'Kept at CloudFront'), t('如何清除改动', 'How changes are cleared')], [
@@ -323,7 +324,7 @@ function security(root) {
   root.append(table([t('测试', 'Test'), t('预期结果', 'Expected'), t('实际结果', 'Actual result'), t('状态', 'Status')], [
     [t('HTTP 降级', 'HTTP downgrade'), t('http:// 跳转到 https://；HSTS 一年', 'http:// redirects to https://; HSTS for a year'), t('301 到 https://blog.dliu.com/；max-age=31536000', '301 to https://blog.dliu.com/; max-age=31536000'), PASS],
     [t('旧版 TLS', 'Old TLS versions'), t('拒绝 TLS 1.0 和 1.1', 'TLS 1.0 and 1.1 refused'), t('两者都收到 protocol_version 警报；TLS 1.2 和 1.3 正常', 'Both get a protocol_version alert; TLS 1.2 and 1.3 work'), PASS],
-    [t('安全响应头', 'Security headers'), t('每个响应都有 CSP、HSTS、X-Frame-Options DENY、nosniff 和 Permissions-Policy', 'CSP, HSTS, X-Frame-Options DENY, nosniff and Permissions-Policy on every response'), t('首页、文章、/admin、/docs、/docs/api、content/index.json 和 /api/me 都有；脚本只允许本站和 traffic.dliu.com', 'Present on the home page, a post, /admin, /docs, /docs/api, content/index.json and /api/me; scripts only from the site and traffic.dliu.com'), PASS],
+    [t('安全响应头', 'Security headers'), t('每个响应都有 CSP、HSTS、X-Frame-Options DENY、nosniff 和 Permissions-Policy', 'CSP, HSTS, X-Frame-Options DENY, nosniff and Permissions-Policy on every response'), t('首页、文章、/admin、/docs、/docs/api.md、content/index.json 和 /api/me 都有；脚本只允许本站和 traffic.dliu.com', 'Present on the home page, a post, /admin, /docs, /docs/api.md, content/index.json and /api/me; scripts only from the site and traffic.dliu.com'), PASS],
     [t('隐藏文件和目录列表', 'Hidden files and listings'), t('拒绝', 'Refused'), t('/.git/config、/.env、package.json、cdk.json、Lambda 源码、content/、media/、pending/ 和未发布文章的 JSON 都返回 403', '/.git/config, /.env, package.json, cdk.json, the Lambda source, content/, media/, pending/ and an unpublished post’s JSON all return 403'), PASS],
     [t('对页面和文件使用其他 HTTP 方法', 'Other HTTP methods on pages and files'), t('拒绝', 'Refused'), t('对页面、content/ 和 media/ 的 POST、PUT、DELETE 和 PATCH 返回 403', 'POST, PUT, DELETE and PATCH on pages, content/ and media/ return 403'), PASS],
     [t('无会话调用网站 API', 'Website API without a session'), t('/api/me 显示未登录；其他调用返回 401', '/api/me says signed out; everything else 401'), t('列出、读取、创建、编辑、删除文章，上传文件和查看谁点了心情都返回 401', 'Listing, reading, creating, editing and deleting posts, uploading and the who-reacted list all return 401'), PASS],
@@ -499,16 +500,16 @@ function security(root) {
   source(root, t('源码：dliu-com/blog（lambda/api/auth.js、lambda/api/index.js、lambda/api/api-access.js、lambda/api/routes.json、lambda/api/reactions.js、lambda/api/s3.js、functions/viewer-request.js、web/markdown.js、lib/blog-stack.ts、scripts/pentest.mjs）。', 'Source: dliu-com/blog (lambda/api/auth.js, lambda/api/index.js, lambda/api/api-access.js, lambda/api/routes.json, lambda/api/reactions.js, lambda/api/s3.js, functions/viewer-request.js, web/markdown.js, lib/blog-stack.ts, scripts/pentest.mjs).'));
 }
 
-// The Testing tab is static HTML in docs.html (data-zh holds the Chinese, so /docs/health.md can be checked against
-// it); this only adds the diagram icons, once.
-function health(root) {
-  for (const step of root.querySelectorAll('.dg-step[data-icon]')) {
+// The API and Testing tabs are static HTML in docs.html (data-zh holds the Chinese, so tests can check them against
+// /docs/api.md, /docs/health.md and the code); this only adds the diagram icons, once.
+function staticTab(root) {
+  for (const step of root.querySelectorAll('.dg-step[data-icon], .dg-stat[data-icon]')) {
     if (!step.querySelector(':scope > .dg-icon')) step.prepend(icon(step.dataset.icon));
   }
 }
 
 // Each article starts with its heading and lead from docs.html (translated by i18n.js); the rest is drawn here.
-const PAGES = { architecture, cost, security, health };
+const PAGES = { architecture, cost, security, api: staticTab, health: staticTab };
 const kept = Object.fromEntries(TABS.map((id) => [id, document.getElementById(id).children.length]));
 function draw() {
   renderNav();

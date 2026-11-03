@@ -112,62 +112,66 @@ describe('GET /health', () => {
 });
 
 describe('/docs#health and /docs/health.md', () => {
-  test('both exist: a Testing tab on /docs, which links the Markdown file as the full technical version', () => {
+  test('both exist: a Testing tab on /docs, which links the Markdown file as the technical version for machines', () => {
     expect(page).toMatch(/^<article id="health" class="dl-docs health-doc" hidden>/);
     expect(docsHtml).toContain('<a href="#health" data-tab="health" data-zh="测试">Testing</a>');
-    expect(read('web/docs.js')).toContain("const TABS = ['architecture', 'cost', 'security', 'health'];");
-    expect(read('web/docs-api.html')).toContain('<a href="/docs#health" data-zh="测试">Testing</a>');
+    expect(read('web/docs.js')).toContain("const TABS = ['architecture', 'cost', 'security', 'api', 'health'];");
     expect(fs.existsSync(path.join(ROOT, 'web/docs-health.html'))).toBe(false);
-    // docs.js redraws every tab on a language change; the diagram icons (span.dg-icon) are added only once.
+    // docs.js redraws every tab on a language change; the icons (span.dg-icon) are added only once.
     expect(read('web/docs.js')).toContain("if (!step.querySelector(':scope > .dg-icon')) step.prepend(icon(step.dataset.icon));");
-    expect(read('web/diagram.js')).toMatch(/className = 'dg-icon'|class="dg-icon"|'dg-icon'/);
-    expect(page).toContain('<a href="/docs/health.md" data-zh="完整技术版本（Markdown）">Full technical version (Markdown)</a>');
+    expect(read('web/docs.js')).toContain("api: staticTab, health: staticTab");
+    expect(read('web/diagram.js')).toContain("el('span', 'dg-icon')");
+    expect(page).toContain('<a href="/docs/health.md" data-zh="面向机器的技术版本（Markdown）">Technical version for machines (Markdown)</a>');
+    expect(page.match(/<a /g)).toHaveLength(1);
     expect(docsHtml).toContain('<link rel="alternate" type="text/markdown" href="/docs/health.md"');
     expect(markdown).toMatch(/^# How to test blog\.dliu\.com\n/);
     for (const title of ['Functions', 'Guest checks', 'Health endpoint', 'Not tested', 'Rules']) expect(section(title)).not.toBe('');
   });
 
-  test('the page has the diagram: the guest, the public pages, /health and the dependencies, then pass, warn and fail', () => {
-    expect(page).toMatch(/<figure class="dg[ "]/);
+  test('the tab shows rather than tells: numbers, flows with pass, warn and fail, a table and a chart', () => {
+    expect(page.match(/class="dg-stat"/g).length).toBeGreaterThanOrEqual(4);
     expect(page.match(/class="dg-flow"/g).length).toBeGreaterThanOrEqual(2);
     expect(page.match(/class="dg-step[ "]/g).length).toBeGreaterThanOrEqual(7);
     expect(page.match(/class="dg-arrow"/g).length).toBeGreaterThanOrEqual(5);
     for (const tone of ['dg-good', 'dg-warn', 'dg-bad']) expect(page).toContain(`class="dg-step ${tone}"`);
     for (const step of ['status.dliu.com', '/health']) expect(page).toContain(`<strong>${step}</strong>`);
+    expect(page).toContain('<table class="health-functions">');
+    expect(page).toContain('<ul class="bar-chart bar-max-2">');
+    expect(page.match(/class="mark mark-good"/g)).toHaveLength(7);
+    expect(page.match(/class="mark mark-bad"/g)).toHaveLength(7);
+    expect(page).toContain('What isn’t tested');
   });
 
-  test('every technical detail is folded: outside closed <details>, the page has no code, URLs or status codes', () => {
-    expect(page).not.toMatch(/<details[^>]*\sopen/);
-    const article = page.slice(page.indexOf('<article'), page.indexOf('</article>'));
-    const unfolded = article.replace(/<details class="dg-more">[\s\S]*?<\/details>/g, '');
-    expect(article.match(/<details class="dg-more">/g).length).toBeGreaterThanOrEqual(2);
-    expect(unfolded).not.toMatch(/<code|<pre|https:\/\/|\b(200|302|503)\b|application\/|max-age/);
-    expect(unfolded).toContain('What isn’t tested');
+  test('no exact technical details: no code, folded blocks, URLs, status codes, headers or JSON', () => {
+    expect(page).not.toMatch(/<code|<pre|<details|https?:\/\/|\b(200|302|401|503)\b|application\/|max-age|Cache-Control|Content-Type|\{"/);
   });
 
-  test('the function keys and names agree in the page, the Markdown file and the endpoint', () => {
+  test('the function keys and names agree in the tab, the Markdown file and the endpoint, and so do the counts', () => {
     const mdFunctions = tableRows(section('Functions')).map(([key, name]) => [unquote(key), name]);
-    const pageFunctions = [...page.matchAll(/<li data-function="([a-z]+)"><strong data-zh="[^"]+">([^<]+)<\/strong>/g)].map(([, key, name]) => [key, name]);
+    const pageFunctions = [...page.matchAll(/<tr data-function="([a-z]+)"><td><strong data-zh="[^"]+">([^<]+)<\/strong>/g)].map(([, key, name]) => [key, name]);
     expect(pageFunctions).toHaveLength(7);
-    expect(new Map(pageFunctions)).toEqual(new Map(mdFunctions));
+    expect(pageFunctions).toEqual(mdFunctions);
     for (const { key, name } of health.FUNCTIONS) expect(new Map(mdFunctions).get(key)).toBe(name);
 
-    const mdChecks = tableRows(section('Guest checks')).map(([key]) => unquote(key));
-    const pageChecks = [...page.matchAll(/<li data-check="([a-z]+)">/g)].map(([, key]) => key);
-    expect(pageChecks).toEqual(mdChecks);
-    for (const key of mdChecks) expect(mdFunctions.map(([k]) => k)).toContain(key);
-
     const mdHealth = tableRows(section('Health endpoint')).map(([key, name]) => [unquote(key), name]);
-    const pageHealth = [...page.matchAll(/<li data-health="([a-z]+)"><code>\1<\/code> \(([^)]+)\)/g)].map(([, key, name]) => [key, name]);
     expect(mdHealth).toEqual(health.FUNCTIONS.map((f) => [f.key, f.name]));
-    expect(pageHealth).toEqual(mdHealth);
     expect(section('Guest checks')).toContain(`Its function keys are ${KEYS.slice(0, -1).map((k) => `\`${k}\``).join(', ')} and \`${KEYS.at(-1)}\`.`);
-
-    // The example responses in both are valid and list exactly the endpoint's functions.
     const mdExample = JSON.parse(section('Health endpoint').match(/```json\n([\s\S]*?)```/)[1]);
-    const pageExample = JSON.parse(page.match(/<pre class="code">([\s\S]*?)<\/pre>/)[1]);
-    expect(mdExample).toEqual(pageExample);
     expect(mdExample.functions.map(({ key, name }) => ({ key, name }))).toEqual(health.FUNCTIONS);
+
+    // The chart: one bar per function, with its guest checks (links) and its /health self-check.
+    const mdChecks = tableRows(section('Guest checks')).map(([key]) => unquote(key));
+    const bars = [...page.matchAll(/<li data-key="([a-z]+)" data-links="(\d)" data-self="(\d)"><span class="bar-label" data-zh="[^"]+">([^<]+)<\/span><span class="bar">(.*?)<\/span><span class="bar-value">(\d+)</g)];
+    expect(bars.map(([, key, , , name]) => [key, name])).toEqual(mdFunctions);
+    for (const [, key, links, self, , units, value] of bars) {
+      const expected = [mdChecks.filter((k) => k === key).length, KEYS.includes(key) ? 1 : 0];
+      expect([key, Number(links), Number(self)]).toEqual([key, ...expected]);
+      expect([key, (units.match(/bar-a/g) || []).length, (units.match(/bar-b/g) || []).length, Number(value)])
+        .toEqual([key, ...expected, expected[0] + expected[1]]);
+    }
+    // The numbers: functions, checks (links + self-checks) and places.
+    expect(page).toContain(`<strong>${mdFunctions.length}</strong><small data-zh="项功能被检查">functions tested</small>`);
+    expect(page).toContain(`<strong>${mdChecks.length + KEYS.length}</strong><small data-zh="项检查：${mdChecks.length} 个页面和链接，${KEYS.length} 项自检">checks: ${mdChecks.length} pages and links, ${KEYS.length} self-checks</small>`);
   });
 
   test('the guest checks are read only: GET (or HEAD) on the public site, never a write', () => {

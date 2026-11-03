@@ -127,3 +127,22 @@ textarea { resize: vertical; }
   .posts.admin li { flex-direction: row; }
   #body, .editor .preview { min-height: 320px; }
 }
+
+/* Docs: simple bar charts (no inline styles under the CSP; bar-max-N sets the unit width) and working/not working marks. */
+.bar-chart { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.bar-chart li { display: grid; grid-template-columns: minmax(6em, 12em) 1fr 2em; align-items: center; gap: 10px; }
+.bar-label { font-size: 14px; }
+.bar { display: flex; gap: 2px; height: 18px; background: var(--dg-soft, #e6ebed); border-radius: 4px; overflow: hidden; }
+.bar-unit { height: 100%; }
+.bar-max-2 .bar-unit { width: 50%; }
+.bar-max-4 .bar-unit { width: 25%; }
+.bar-a { background: var(--dl-accent, #209cee); }
+.bar-b { background: var(--dl-ok, #1a7f37); }
+.bar-c { background: var(--dl-danger, #d1242f); }
+.bar-value { font-variant-numeric: tabular-nums; font-weight: 600; text-align: right; }
+.bar-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 10px 0 0; font-size: 13px; color: var(--dg-muted, #52636c); }
+.bar-key { display: inline-block; width: 12px; height: 12px; border-radius: 3px; }
+.mark { font-weight: 700; }
+.mark-good { color: var(--dl-ok, #1a7f37); }
+.mark-bad { color: var(--dl-danger, #d1242f); }
+@media (max-width: 480px) { .bar-chart li { grid-template-columns: 1fr 2em; } .bar-label { grid-column: 1 / -1; } }

@@ -9,7 +9,7 @@ const exists = (file) => fs.existsSync(path.join(__dirname, '..', file));
 const DL_CSS = '<link rel="stylesheet" href="https://files.dliu.com/dliu.com/ui/v1/dl.css">';
 const DL_DOCS_CSS = '<link rel="stylesheet" href="https://files.dliu.com/dliu.com/ui/v1/dl-docs.css">';
 const DL_ICON = 'https://files.dliu.com/dliu.com/favicon.png';
-const PAGES = ['index', 'docs', 'docs-api'];
+const PAGES = ['index', 'docs'];
 
 test('every page loads the shared dliu.com stylesheet before any other', () => {
   for (const html of PAGES) {
@@ -37,7 +37,7 @@ test('every page has the shared header with the blog\'s own logo, and the shared
 });
 
 test('docs pages load the shared docs stylesheet and tabs, and the blog has no docs stylesheet of its own', () => {
-  for (const html of ['docs', 'docs-api']) {
+  for (const html of ['docs']) {
     const page = read(`web/${html}.html`);
     expect(page.indexOf(DL_DOCS_CSS)).toBeGreaterThan(page.indexOf(DL_CSS));
     expect(page.indexOf(DL_DOCS_CSS)).toBeLessThan(page.indexOf('<link rel="stylesheet" href="/style.css">'));

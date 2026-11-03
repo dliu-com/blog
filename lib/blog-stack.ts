@@ -184,7 +184,7 @@ export class BlogStack extends Stack {
     }));
     const functionUrl = apiHandler.addFunctionUrl({ authType: lambda.FunctionUrlAuthType.AWS_IAM });
 
-    // ---------- Microsoft API (trusted tools and agents; see /docs/api) ----------
+    // ---------- Microsoft API (trusted tools and agents; see /docs/api.md) ----------
     let microsoftApiUrl: string | undefined;
     if (props.microsoftApi) {
       const tenantId = ssm.StringParameter.valueForStringParameter(this, SHARED_TENANT_PARAMETER);

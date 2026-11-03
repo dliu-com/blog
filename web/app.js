@@ -361,7 +361,7 @@
         el('h1', { text: t('所有文章', 'All posts') }),
         el('div', { class: 'row' }, [
           el('span', { class: 'dl-muted', text: t(`${publishedCount} 篇已发布 · ${draftCount} 篇草稿`, `${publishedCount} published · ${plural(draftCount, 'draft')}`) }),
-          el('a', { class: 'dl-button dl-button-small', href: '/docs/api', text: 'API', title: t('让 AI 代理或脚本用 Microsoft 访问令牌替你发文章', 'Let an AI agent or script post for you with a Microsoft access token') }),
+          el('a', { class: 'dl-button dl-button-small', href: '/docs#api', text: 'API', title: t('让 AI 代理或脚本用 Microsoft 访问令牌替你发文章', 'Let an AI agent or script post for you with a Microsoft access token') }),
         ]),
       ]),
       notices,

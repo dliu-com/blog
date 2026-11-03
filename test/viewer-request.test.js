@@ -31,9 +31,10 @@ test('/docs is served by docs.html', () => {
   expect(run('/docs.js').uri).toBe('/docs.js');
 });
 
-test('/docs/api is the API guide; /docs/api.md is served as a file', () => {
-  expect(run('/docs/api').uri).toBe('/docs-api.html');
-  expect(run('/docs/api/').uri).toBe('/docs-api.html');
+test('/docs/api redirects to the API tab, /docs#api; /docs/api.md is served as a file', () => {
+  for (const uri of ['/docs/api', '/docs/api/']) {
+    expect(run(uri)).toMatchObject({ statusCode: 301, headers: { location: { value: '/docs#api' } } });
+  }
   expect(run('/docs/api.md').uri).toBe('/docs/api.md');
 });
 

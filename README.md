@@ -2,7 +2,7 @@
 
 The blog at **https://blog.dliu.com**: a small, serverless blog. It looks like the other dliu.com apps and is just a list of posts; writing works like WordPress (drafts, publish, attach pictures and files).
 
-Technical architecture, cost and security are explained at https://blog.dliu.com/docs.
+Architecture, cost, security, the writing API and testing are explained at https://blog.dliu.com/docs.
 
 It replaces the old WordPress container, which ran around the clock. The new blog has **no server running when nobody is using it**:
 
@@ -65,13 +65,13 @@ Every dliu.com site shares one light look from https://files.dliu.com/dliu.com/R
 
 ## Languages
 
-The site is in Chinese and English. It follows the browser's language (any `zh-*` is Chinese, everything else English) until the reader picks one with the 中文 / English switch at the end of the header (the shared `dl-language` markup; 文/A on phones); that choice is saved in the browser (`localStorage`, key `blog-language`). `web/i18n.js` holds the language, the `t(中文, English)` helper and the Chinese text for API errors; static text in the HTML pages carries its Chinese in `data-zh` attributes. Posts are shown as written, and the agent guide `/docs/api.md` (and `/docs/api`) stays in English.
+The site is in Chinese and English. It follows the browser's language (any `zh-*` is Chinese, everything else English) until the reader picks one with the 中文 / English switch at the end of the header (the shared `dl-language` markup; 文/A on phones); that choice is saved in the browser (`localStorage`, key `blog-language`). `web/i18n.js` holds the language, the `t(中文, English)` helper and the Chinese text for API errors; static text in the HTML pages carries its Chinese in `data-zh` attributes. Posts are shown as written, and the machine-readable guides `/docs/api.md` and `/docs/health.md` stay in English; the API and Testing tabs on `/docs` are in both languages.
 
 ## API for AI agents and scripts
 
 Agents and scripts write posts through a separate managed API, not the website. It accepts Microsoft-issued user access tokens from Central Microsoft sign-in at https://auth.dliu.com, which also documents how to obtain, save and send them (https://auth.dliu.com/docs/api). The blog has no API tokens of its own any more.
 
-The API guide is `web/docs/api.md`, served at https://blog.dliu.com/docs/api.md (and `/docs/api`). It contains `{{MICROSOFT_API_URL}}`, which the deployment replaces with the stack's `MicrosoftApiUrl` output, so readers never need AWS access to find the API. To let an AI agent write a post, save a token at auth.dliu.com and give the agent only that guide's link and a specific task.
+The API guide is `web/docs/api.md`, served at https://blog.dliu.com/docs/api.md: the full reference for machines. People read the API tab, https://blog.dliu.com/docs#api (flows, numbers, an endpoint table and a chart, without exact request or response formats); the old `/docs/api` answers 301 to it. It contains `{{MICROSOFT_API_URL}}`, which the deployment replaces with the stack's `MicrosoftApiUrl` output, so readers never need AWS access to find the API. To let an AI agent write a post, save a token at auth.dliu.com and give the agent only that guide's link and a specific task.
 
 | Route | Scope |
 | --- | --- |
@@ -88,8 +88,8 @@ Every route also needs the Microsoft-assigned user role **dliu API user** (`api.
 ```
 web/            frontend (vanilla JS, no build step): index.html, app.js, i18n.js (Chinese/English), markdown.js, style.css,
                 docs.html, docs.js, diagram.js (the /docs page; shared dl.css + dl-docs.css),
-                docs-api.html, docs-api.js, docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy),
-                docs/health.md (how status.dliu.com tests the site; the page is docs.html's Testing tab)
+                docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy; for people it is docs.html's
+                API tab), docs/health.md (how status.dliu.com tests the site; for people it is docs.html's Testing tab)
 lambda/invalidate/ clears deleted or changed media from CloudFront (S3 event -> SQS -> this function)
 lambda/api/     authoring API: routes (index.js), managed API routes and checks (routes.json, api-access.js), posts,
                 S3 signing, DynamoDB store, Entra auth, config, /health (health.js)
@@ -179,7 +179,7 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 | `/<postId>` | The post, e.g. `/2026102701`. `/<postId>/` redirects to it. |
 | `/admin` | All posts and drafts (signed in) |
 | `/docs` | Architecture, cost, security and testing (tabs) |
-| `/docs/api`, `/docs/api.md` | API guide for agents (page and Markdown) |
+| `/docs#api`, `/docs/api.md` | The writing API (the API tab for people, Markdown for agents); `/docs/api` → 301 `/docs#api` |
 | `/docs#health`, `/docs/health.md` | How status.dliu.com tests the site (the Testing tab for people, Markdown for machines); `/docs/health` → 301 `/docs#health` |
 | `/health` | Health check for status.dliu.com (`application/health+json`). `/health/` redirects to it. |
 | `/posts/<postId>` | `/<postId>` (301) |
@@ -207,7 +207,7 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 
 The site follows the dliu.com health contract (`status/HEALTH.md`): status.dliu.com checks it every 15 minutes as an anonymous guest.
 
-- The Testing tab, `/docs#health` (static HTML in `docs.html`; the old `/docs/health` answers 301 to it), explains the checks for people: a diagram, one plain line per function, and what isn't tested, with every technical detail in closed `<details>` blocks. `/docs/health.md` is the full technical version for machines (functions, guest checks table, `/health`, not tested, rules), uploaded by its own `HealthDoc` deployment as `text/markdown; charset=utf-8`.
+- The Testing tab, `/docs#health` (static HTML in `docs.html`; the old `/docs/health` answers 301 to it), explains the checks for people with numbers, flows, a table per function, a chart and what isn't tested, and no exact technical details (only names such as `/health` or `/api/me`). `/docs/health.md` is the full technical version for machines (functions, guest checks table, `/health`, not tested, rules), uploaded by its own `HealthDoc` deployment as `text/markdown; charset=utf-8`.
 - `GET /health` reports `posts` (DynamoDB `GetItem` of a fixed key on the posts table), `reactions` (`GetItem` on the reactions table), `storage` (S3 `HeadObject` of `content/index.json`; the only extra IAM grant is `s3:GetObject` on exactly that object) and `signin` (the SSM settings read sign-in already does, cached 5 minutes; no call to Microsoft). Checks run in parallel with a 2 s timeout each; over 1 s is `warn` (`slow`), a failure is `fail` (`timeout` or `read failed`). It answers `200` for `pass`/`warn` and `503` for `fail`, and names no tables, buckets or functions.
 - The `health` CloudFront behaviour sends it to the API Lambda with a cache policy keyed on nothing (60 s, the Lambda's `max-age=60`) and no origin request policy, so no cookies, `Authorization` header or query string reach the Lambda; the handler reads none of them either. No viewer function runs on it.
 - `test/health.test.js` fails if the page, the Markdown file or the endpoint disappears, if `/health` reads the request, if the diagram is lost or details are unfolded, or if the function keys drift between the page, the Markdown file and the endpoint. `test/stack.test.ts` checks the behaviour, the cache policy, the grant and the Markdown content type.

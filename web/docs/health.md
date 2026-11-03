@@ -15,7 +15,7 @@ users changing content; the two share no routes and no credentials.
 | `reactions` | Reactions | Readers' reactions (love, like…) on each post, kept in a DynamoDB table; no sign-in. | no |
 | `api` | Blog API | The website's API Lambda (`/api/*`): sign-in state, reactions, and the owner's editing. | yes |
 | `signin` | Microsoft sign-in | The owner signs in with Microsoft Entra ID (`/auth/login`), using settings read from SSM Parameter Store. | no |
-| `docs` | Docs | The documentation pages (`/docs`, `/docs/api`; `/docs/health` redirects to `/docs#health`). | no |
+| `docs` | Docs | The documentation pages (`/docs`; `/docs/api` and `/docs/health` redirect to its `#api` and `#health` tabs). | no |
 
 The site is "down" when a critical function fails.
 
@@ -88,7 +88,7 @@ A guest can't test anything that needs the owner's Microsoft sign-in or that cha
 - Signing in itself (it needs the owner's Microsoft account) and the signed-in session.
 - Writing, editing, publishing, unpublishing and deleting posts.
 - Uploading pictures and files to a post, and deleting them.
-- The managed Microsoft API for AI agents (it needs a Microsoft access token; see /docs/api).
+- The managed Microsoft API for AI agents (it needs a Microsoft access token; see /docs/api.md).
 - Sending a reaction (a write) and its rate limit.
 - Clearing CloudFront's copy of deleted or changed media (it runs after the owner deletes something).
 - The link preview of a particular post (posts can be unpublished or deleted).

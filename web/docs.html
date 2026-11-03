@@ -4,11 +4,12 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Docs · DL blog</title>
-  <meta name="description" content="How blog.dliu.com works: architecture, running costs, security and testing">
+  <meta name="description" content="How blog.dliu.com works: architecture, running costs, security, the writing API and testing">
   <link rel="icon" href="/logo.svg" type="image/svg+xml">
   <link rel="stylesheet" href="https://files.dliu.com/dliu.com/ui/v1/dl.css">
   <link rel="stylesheet" href="https://files.dliu.com/dliu.com/ui/v1/dl-docs.css">
   <link rel="stylesheet" href="/style.css">
+  <link rel="alternate" type="text/markdown" href="/docs/api.md" title="API: technical version for machines (Markdown)">
   <link rel="alternate" type="text/markdown" href="/docs/health.md" title="Full technical version (Markdown)">
   <script src="/i18n.js" defer></script>
   <script type="module" src="/docs.js"></script>
@@ -21,11 +22,11 @@
   </header>
   <main class="dl-main dl-docs-main">
     <nav class="dl-tabs" aria-label="Docs sections" data-zh-label="文档章节">
-      <a href="#architecture" data-tab="architecture" data-zh="技术架构">Technical architecture</a>
+      <a href="#architecture" data-tab="architecture" data-zh="架构">Architecture</a>
       <a href="#cost" data-tab="cost" data-zh="运行成本">Cost</a>
       <a href="#security" data-tab="security" data-zh="安全">Security</a>
+      <a href="#api" data-tab="api">API</a>
       <a href="#health" data-tab="health" data-zh="测试">Testing</a>
-      <a href="/docs/api">API</a>
     </nav>
     <article id="architecture" class="dl-docs">
       <h2 data-zh="运作方式">How it works</h2>
@@ -40,105 +41,193 @@
       <h2 data-zh="安全">Security</h2>
       <p class="lead" data-zh="任何人都能阅读已发布的文章；只有用 Microsoft 登录的博主才能写作、发布或删除，并可以通过 Microsoft API 用短期有效的 Microsoft 访问令牌让 AI 代理代为写作。草稿内容不会离开数据库。">Anyone can read published posts; only the owner, signed in with Microsoft, can write, publish or delete, and can let an AI agent write through the Microsoft API with a short-lived Microsoft access token. Draft text never leaves the database.</p>
     </article>
-    <article id="health" class="dl-docs health-doc" hidden>
-      <h2 data-zh="博客如何被检查">How the blog is checked</h2>
-      <p class="lead" data-zh="status.dliu.com 每 15 分钟像一位普通访客那样检查这个博客：不登录、不改动任何内容，只打开公开的页面和链接，再问博客自己的 /health 检查它依赖的数据库、存储和登录设置是否正常。">Every 15 minutes, status.dliu.com checks this blog the way an ordinary visitor would: it never signs in and never changes anything. It opens the public pages and links, then asks the blog’s own /health check whether the database, storage and sign-in settings it relies on are working.</p>
+    <article id="api" class="dl-docs api-doc" hidden>
+      <h2 data-zh="写作 API">The writing API</h2>
+      <p class="lead" data-zh="博主可以让受信任的 AI 助手或脚本代为写文章。它们使用单独的 Microsoft API，带着博主用 Microsoft 登录后得到的短期访问令牌。读者从不使用这个 API。">The owner can let a trusted AI agent or script write posts for them. It uses a separate Microsoft API, with a short-lived access token the owner gets by signing in with Microsoft. Readers never use this API.</p>
+      <p class="agent-note" data-zh="AI 助手：请阅读面向机器的技术版本 /docs/api.md。">AI agents: read the technical version for machines, /docs/api.md.</p>
 
-      <figure class="dg health-diagram">
-        <figcaption data-zh="检查的过程">How a check runs</figcaption>
+      <div class="dg-stats">
+        <div class="dg-stat" data-icon="code"><span class="dg-text"><strong>9</strong><small data-zh="个端点：文章和文件">endpoints: posts and files</small></span></div>
+        <div class="dg-stat" data-icon="key"><span class="dg-text"><strong>3</strong><small data-zh="级权限：读、写、删除">permissions: read, write, delete</small></span></div>
+        <div class="dg-stat" data-icon="entra"><span class="dg-text"><strong>1</strong><small data-zh="种登录：Microsoft，在 auth.dliu.com">sign-in: Microsoft, at auth.dliu.com</small></span></div>
+        <div class="dg-stat" data-icon="lock"><span class="dg-text"><strong>0</strong><small data-zh="个令牌保存在博客中">tokens stored by the blog</small></span></div>
+        <div class="dg-stat" data-icon="upload"><span class="dg-text"><strong>100 MB</strong><small data-zh="每个文件，每篇文章最多 100 个">per file, up to 100 a post</small></span></div>
+        <div class="dg-stat" data-icon="pen"><span class="dg-text"><strong>100</strong><small data-zh="篇新文章每天">new posts a day</small></span></div>
+      </div>
+
+      <figure class="dg">
+        <figcaption data-zh="助手如何写一篇文章">How an agent writes a post</figcaption>
         <div class="dg-flow" role="list">
-          <div class="dg-step" role="listitem" data-icon="bot"><span class="dg-text"><strong>status.dliu.com</strong><small data-zh="访客身份，每 15 分钟">As a guest, every 15 minutes</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="entra"><span class="dg-text"><strong data-zh="1. 博主登录">1. The owner signs in</strong><small data-zh="在 auth.dliu.com 用 Microsoft 登录，保存一个短期令牌">With Microsoft at auth.dliu.com, and saves a short-lived token</small></span></div>
           <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
-          <div class="dg-step" role="listitem" data-icon="page"><span class="dg-text"><strong data-zh="页面和公开链接">Pages and public links</strong><small data-zh="首页、文章列表、心情、登录链接、文档">Home page, post list, reactions, sign-in link, docs</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="bot"><span class="dg-text"><strong data-zh="2. 交给助手">2. Hands it to an agent</strong><small data-zh="只给 API 指南和一个具体任务，例如“写一篇草稿”">Only the API guide and one task, e.g. “draft a post”</small></span></div>
           <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
-          <div class="dg-step" role="listitem" data-icon="lambda"><span class="dg-text"><strong>/health</strong><small data-zh="博客自检，最多每分钟一次">The blog checks itself, at most once a minute</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="shield"><span class="dg-text"><strong data-zh="3. 检查令牌">3. The token is checked</strong><small data-zh="Microsoft API 和博客都会检查">By the Microsoft API, then by the blog</small></span></div>
           <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
-          <div class="dg-step" role="listitem" data-icon="dynamodb"><span class="dg-text"><strong data-zh="数据库、存储、登录设置">Database, storage, sign-in settings</strong><small data-zh="每样只快速读一次">One quick read each</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="dynamodb"><span class="dg-text"><strong data-zh="4. 保存为草稿">4. Saved as a draft</strong><small data-zh="除非博主要求发布">Unless the owner asked to publish</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-good" role="listitem" data-icon="eye"><span class="dg-text"><strong data-zh="5. 博主查看并发布">5. The owner reviews and publishes</strong><small data-zh="在博客的写作页面">In the blog’s editor</small></span></div>
         </div>
       </figure>
-      <figure class="dg health-results">
-        <figcaption data-zh="结果">Results</figcaption>
+
+      <figure class="dg">
+        <figcaption data-zh="登录如何被检查">How sign-in is checked</figcaption>
         <div class="dg-flow" role="list">
-          <div class="dg-step dg-good" role="listitem" data-icon="check"><span class="dg-text"><strong data-zh="正常">Pass</strong><small data-zh="一切按预期工作">Everything works as expected</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="key"><span class="dg-text"><strong data-zh="Microsoft 访问令牌">Microsoft access token</strong><small data-zh="来自 auth.dliu.com，很快过期">From auth.dliu.com; expires soon</small></span></div>
           <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
-          <div class="dg-step dg-warn" role="listitem" data-icon="clock"><span class="dg-text"><strong data-zh="变慢">Warn</strong><small data-zh="变慢或失败一次：显示为“降级”">Slow, or failed once: shown as degraded</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="shield"><span class="dg-text"><strong data-zh="网关">Gateway</strong><small data-zh="Microsoft 签名、有效期、本 API、所需权限">Microsoft’s signature, expiry, this API, the permission needed</small></span></div>
           <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
-          <div class="dg-step dg-bad" role="listitem" data-icon="power"><span class="dg-text"><strong data-zh="失败">Fail</strong><small data-zh="连续两次失败：显示为“停止服务”">Failed twice in a row: shown as down</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="lambda"><span class="dg-text"><strong data-zh="博客">Blog</strong><small data-zh="正确的组织和应用，账户有 “dliu API user” 角色">The right organisation and app, and an account with the “dliu API user” role</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-good" role="listitem" data-icon="check"><span class="dg-text"><strong data-zh="允许">Allowed</strong><small data-zh="只做令牌权限范围内的事">Only what the token’s permission covers</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-bad" role="listitem" data-icon="power"><span class="dg-text"><strong data-zh="拒绝">Refused</strong><small data-zh="任何一项不符；网站的登录 Cookie 在这里无效">If anything doesn’t match; the website’s sign-in cookie doesn’t work here</small></span></div>
         </div>
       </figure>
 
-      <h3 data-zh="检查哪些功能">What is checked</h3>
-      <ul class="health-functions">
-        <li data-function="pages"><strong data-zh="页面">Pages</strong> <span data-zh="首页能打开。如果失败，读者完全打不开博客。">The home page opens. If this fails, readers can’t open the blog at all.</span></li>
-        <li data-function="posts"><strong data-zh="文章">Posts</strong> <span data-zh="已发布文章的列表能读取，保存文章的数据库能访问。如果失败，读者看不到文章，博主也无法保存。">The list of published posts loads, and the database posts are saved in answers. If this fails, readers see no posts and the owner can’t save.</span></li>
-        <li data-function="storage"><strong data-zh="已发布内容的存储">Published content storage</strong> <span data-zh="存放已发布文章、图片和文件的存储能访问。如果失败，文章、图片和文件都打不开。">The storage that holds published posts, pictures and files answers. If this fails, posts, pictures and files don’t open.</span></li>
-        <li data-function="reactions"><strong data-zh="心情">Reactions</strong> <span data-zh="文章下方的心情计数能读取。如果失败，读者看不到也无法留下心情，但文章照常可读。">The reaction counts under each post load. If this fails, readers can’t see or leave reactions, but posts still read fine.</span></li>
-        <li data-function="api"><strong data-zh="博客 API">Blog API</strong> <span data-zh="网站背后的小程序能响应。如果失败，心情、登录和写作都不可用。">The small program behind the site answers. If this fails, reactions, sign-in and writing stop working.</span></li>
-        <li data-function="signin"><strong data-zh="Microsoft 登录">Microsoft sign-in</strong> <span data-zh="登录按钮能把人带到 Microsoft，登录设置能读取。如果失败，博主无法登录写作；读者不受影响。">The Sign in button leads to Microsoft and the sign-in settings can be read. If this fails, the owner can’t sign in to write; readers aren’t affected.</span></li>
-        <li data-function="docs"><strong data-zh="文档">Docs</strong> <span data-zh="这些文档页面能打开。如果失败，只是说明文档看不到。">These documentation pages open. If this fails, only the documentation is missing.</span></li>
+      <h3 data-zh="端点">Endpoints</h3>
+      <div class="table-wrap">
+        <table class="api-endpoints">
+          <thead><tr><th data-zh="端点">Endpoint</th><th data-zh="用途">What it’s for</th><th data-zh="所需权限">Permission</th></tr></thead>
+          <tbody>
+            <tr data-route="GET /api/me"><td class="mono">GET /api/me</td><td data-zh="确认令牌有效，看看是谁">Check the token works, and whose it is</td><td data-zh="读">Read</td></tr>
+            <tr data-route="GET /api/posts"><td class="mono">GET /api/posts</td><td data-zh="列出所有文章，包括草稿">List every post, drafts included</td><td data-zh="读">Read</td></tr>
+            <tr data-route="GET /api/posts/{postId}"><td class="mono">GET /api/posts/&lt;id&gt;</td><td data-zh="读取一篇文章的全文和文件">Read one post, with its text and files</td><td data-zh="读">Read</td></tr>
+            <tr data-route="POST /api/posts"><td class="mono">POST /api/posts</td><td data-zh="新建一篇文章（默认是草稿）">Create a post (a draft by default)</td><td data-zh="写">Write</td></tr>
+            <tr data-route="PUT /api/posts/{postId}"><td class="mono">PUT /api/posts/&lt;id&gt;</td><td data-zh="编辑、发布或取消发布">Edit, publish or unpublish</td><td data-zh="写">Write</td></tr>
+            <tr data-route="POST /api/posts/{postId}/files"><td class="mono">POST /api/posts/&lt;id&gt;/files</td><td data-zh="开始上传图片或文件">Start uploading a picture or file</td><td data-zh="写">Write</td></tr>
+            <tr data-route="PUT /api/posts/{postId}/files/{fileId}"><td class="mono">PUT /api/posts/&lt;id&gt;/files/&lt;file&gt;</td><td data-zh="把上传好的文件加到文章">Attach a finished upload to the post</td><td data-zh="写">Write</td></tr>
+            <tr data-route="DELETE /api/posts/{postId}/files/{fileId}"><td class="mono">DELETE /api/posts/&lt;id&gt;/files/&lt;file&gt;</td><td data-zh="从文章移除并删除一个文件">Remove a file from a post and delete it</td><td data-zh="删除">Delete</td></tr>
+            <tr data-route="DELETE /api/posts/{postId}"><td class="mono">DELETE /api/posts/&lt;id&gt;</td><td data-zh="删除文章及其所有文件">Delete a post and all its files</td><td data-zh="删除">Delete</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <figure class="dg">
+        <figcaption data-zh="每级权限的端点数">Endpoints per permission</figcaption>
+        <ul class="bar-chart bar-max-4">
+          <li data-scope="blog.read"><span class="bar-label" data-zh="读">Read</span><span class="bar"><span class="bar-unit bar-a"></span><span class="bar-unit bar-a"></span><span class="bar-unit bar-a"></span></span><span class="bar-value">3</span></li>
+          <li data-scope="blog.write"><span class="bar-label" data-zh="写">Write</span><span class="bar"><span class="bar-unit bar-b"></span><span class="bar-unit bar-b"></span><span class="bar-unit bar-b"></span><span class="bar-unit bar-b"></span></span><span class="bar-value">4</span></li>
+          <li data-scope="blog.delete"><span class="bar-label" data-zh="删除">Delete</span><span class="bar"><span class="bar-unit bar-c"></span><span class="bar-unit bar-c"></span></span><span class="bar-value">2</span></li>
+        </ul>
+        <p class="dg-note" data-zh="写权限不包括删除：删除需要单独授予。">Write doesn’t include delete: deleting must be granted separately.</p>
+      </figure>
+
+      <figure class="dg">
+        <figcaption data-zh="如何加一张图片">How a picture is added</figcaption>
+        <div class="dg-flow" role="list">
+          <div class="dg-step" role="listitem" data-icon="link"><span class="dg-text"><strong data-zh="1. 要一个上传链接">1. Ask for an upload link</strong><small data-zh="说明文件名、大小和类型">Giving the file’s name, size and type</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="upload"><span class="dg-text"><strong data-zh="2. 直接上传到存储">2. Upload straight to storage</strong><small data-zh="15 分钟内；文件不经过 API">Within 15 minutes; the file never passes through the API</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="pen"><span class="dg-text"><strong data-zh="3. 加到文章">3. Attach it to the post</strong><small data-zh="得到图片的地址">Which gives the picture’s address</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-good" role="listitem" data-icon="image"><span class="dg-text"><strong data-zh="4. 放进正文">4. Put it in the text</strong><small data-zh="没放进正文的图片显示在文章下方的相册里">Pictures not in the text appear in a gallery under the post</small></span></div>
+        </div>
+      </figure>
+
+      <h3 data-zh="限制">Limits</h3>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th data-zh="项目">What</th><th data-zh="上限">Limit</th></tr></thead>
+          <tbody>
+            <tr><td data-zh="标题">Title</td><td class="num" data-zh="200 个字符">200 characters</td></tr>
+            <tr><td data-zh="正文">Text</td><td class="num">200 KB</td></tr>
+            <tr><td data-zh="每个文件">Each file</td><td class="num">100 MB</td></tr>
+            <tr><td data-zh="每篇文章的文件">Files per post</td><td class="num">100</td></tr>
+            <tr><td data-zh="每天新文章">New posts a day</td><td class="num">100</td></tr>
+            <tr><td data-zh="上传链接有效期">Upload link lasts</td><td class="num" data-zh="15 分钟">15 minutes</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3 data-zh="这个 API 不做什么">What this API doesn’t do</h3>
+      <ul>
+        <li data-zh="不处理心情、评论、登录或网站页面。">No reactions, comments, sign-in or website pages.</li>
+        <li data-zh="不签发、刷新或保存令牌：令牌只来自 auth.dliu.com。">It doesn’t issue, renew or store tokens: they come only from auth.dliu.com.</li>
+        <li data-zh="网站自己的 /api/ 只认网站登录，不接受这些令牌。">The website’s own /api/ knows only website sign-in and doesn’t accept these tokens.</li>
+        <li data-zh="助手被告知：除非被要求发布，否则只存草稿；删除无法撤销。">Agents are told to save drafts unless asked to publish; deleting can’t be undone.</li>
       </ul>
 
-      <details class="dg-more">
-        <summary data-zh="技术细节：访客检查">Technical details: guest checks</summary>
-        <div>
-          <p>Anonymous <code>GET</code> only: no cookies, no <code>Authorization</code>, no query string, redirects not followed. User agent <code>dliu-status-bot/1.0 (+https://status.dliu.com/docs)</code>.</p>
-          <ul class="health-checks">
-            <li data-check="pages"><code>pages</code>: <code>GET https://blog.dliu.com/</code> → <code>200</code> <code>text/html</code>, contains <code>dl-footer</code>; slow after 2000 ms.</li>
-            <li data-check="posts"><code>posts</code>: <code>GET https://blog.dliu.com/content/index.json</code> → <code>200</code> <code>application/json</code>, JSON key <code>posts</code>; slow after 2000 ms.</li>
-            <li data-check="reactions"><code>reactions</code>: <code>GET https://blog.dliu.com/api/reactions/2026103100</code> → <code>200</code> <code>application/json</code>, JSON key <code>counts</code>; slow after 3000 ms. Read only; never <code>POST</code>.</li>
-            <li data-check="api"><code>api</code>: <code>GET https://blog.dliu.com/api/me</code> → <code>200</code> <code>application/json</code>, JSON key <code>signedIn</code> (value <code>false</code>); slow after 3000 ms.</li>
-            <li data-check="signin"><code>signin</code>: <code>GET https://blog.dliu.com/auth/login</code> → <code>302</code>, <code>Location</code> starts with <code>https://login.microsoftonline.com/</code>; slow after 3000 ms.</li>
-            <li data-check="docs"><code>docs</code>: <code>GET https://blog.dliu.com/docs</code> → <code>200</code> <code>text/html</code>, contains <code>dl-tabs</code>; slow after 2000 ms.</li>
-          </ul>
+      <p><a href="/docs/api.md" data-zh="面向机器的技术版本（Markdown）">Technical version for machines (Markdown)</a> · <a href="https://auth.dliu.com/docs/api" data-zh="如何获取令牌（auth.dliu.com）">How to get a token (auth.dliu.com)</a></p>
+    </article>
+    <article id="health" class="dl-docs health-doc" hidden>
+      <h2 data-zh="博客如何被检查">How the blog is checked</h2>
+      <p class="lead" data-zh="status.dliu.com 每 15 分钟像一位普通访客那样检查这个博客：不登录、不改动任何内容，只打开公开的页面和链接，再请博客检查它自己的数据库、存储和登录设置。">Every 15 minutes, status.dliu.com checks this blog the way an ordinary visitor would: it never signs in and never changes anything. It opens the public pages and links, then asks the blog to check its own database, storage and sign-in settings.</p>
+
+      <div class="dg-stats">
+        <div class="dg-stat" data-icon="check"><span class="dg-text"><strong>7</strong><small data-zh="项功能被检查">functions tested</small></span></div>
+        <div class="dg-stat" data-icon="page"><span class="dg-text"><strong>10</strong><small data-zh="项检查：6 个页面和链接，4 项自检">checks: 6 pages and links, 4 self-checks</small></span></div>
+        <div class="dg-stat" data-icon="clock"><span class="dg-text"><strong data-zh="15 分钟">15 min</strong><small data-zh="每隔多久检查一次">between runs</small></span></div>
+        <div class="dg-stat" data-icon="pin"><span class="dg-text"><strong>3</strong><small data-zh="个地点：爱尔兰、弗吉尼亚、东京">places: Ireland, Virginia, Tokyo</small></span></div>
+        <div class="dg-stat" data-icon="chart"><span class="dg-text"><strong>288</strong><small data-zh="次检查运行每天（96 次 × 3 个地点）">runs a day (96 × 3 places)</small></span></div>
+        <div class="dg-stat" data-icon="user"><span class="dg-text"><strong>0</strong><small data-zh="次登录：只以访客身份检查">sign-ins: guests only</small></span></div>
+      </div>
+
+      <figure class="dg health-diagram">
+        <figcaption data-zh="一次检查的过程">How a check runs</figcaption>
+        <div class="dg-flow" role="list">
+          <div class="dg-step" role="listitem" data-icon="bot"><span class="dg-text"><strong>status.dliu.com</strong><small data-zh="以访客身份，从 3 个地点">As a guest, from 3 places</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="page"><span class="dg-text"><strong data-zh="6 个页面和链接">6 pages and links</strong><small data-zh="首页、文章列表、心情、/api/me、登录链接、文档">Home page, post list, reactions, /api/me, sign-in link, docs</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="lambda"><span class="dg-text"><strong>/health</strong><small data-zh="博客自检，结果最多每分钟更新一次">The blog checks itself; refreshed at most once a minute</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="dynamodb"><span class="dg-text"><strong data-zh="4 项自检">4 self-checks</strong><small data-zh="文章数据库、心情数据库、已发布内容存储、登录设置：每样只快速读一次">Posts database, reactions database, published storage, sign-in settings: one quick read each</small></span></div>
         </div>
-      </details>
-      <details class="dg-more">
-        <summary data-zh="技术细节：/health">Technical details: /health</summary>
-        <div>
-          <p><code>GET https://blog.dliu.com/health</code> (or <code>HEAD</code>), no authentication. CloudFront forwards no cookies, no <code>Authorization</code> header and no query string, and caches the answer for 60 s (<code>Cache-Control: public, max-age=60</code>, cache key empty). <code>/health/</code> redirects to <code>/health</code>.</p>
-          <p><code>Content-Type: application/health+json</code>; HTTP <code>200</code> for <code>pass</code> or <code>warn</code>, <code>503</code> for <code>fail</code>. Checks run in parallel, each with a 2 s timeout; over 1 s is <code>warn</code> (<code>slow</code>); a failure is <code>fail</code> (<code>timeout</code> or <code>read failed</code>). The top-level <code>status</code> is the worst. No writes, no S3 LIST, no Microsoft calls; no names, counts or traces in the answer.</p>
-          <ul class="health-endpoint">
-            <li data-health="posts"><code>posts</code> (Posts): DynamoDB <code>GetItem</code> of a fixed key on the posts table.</li>
-            <li data-health="reactions"><code>reactions</code> (Reactions): DynamoDB <code>GetItem</code> of a fixed key on the reactions table.</li>
-            <li data-health="storage"><code>storage</code> (Published content storage): S3 <code>HeadObject</code> of <code>content/index.json</code>.</li>
-            <li data-health="signin"><code>signin</code> (Microsoft sign-in): the SSM Parameter Store read sign-in already does (cached 5 minutes); no call to Microsoft.</li>
-          </ul>
-          <pre class="code">{
-  "status": "pass",
-  "time": "2026-11-04T09:00:00Z",
-  "functions": [
-    { "key": "posts", "name": "Posts", "status": "pass" },
-    { "key": "reactions", "name": "Reactions", "status": "pass" },
-    { "key": "storage", "name": "Published content storage", "status": "pass" },
-    { "key": "signin", "name": "Microsoft sign-in", "status": "warn", "output": "slow" }
-  ]
-}</pre>
+      </figure>
+
+      <figure class="dg health-results">
+        <figcaption data-zh="结果如何显示">How results are shown</figcaption>
+        <div class="dg-flow" role="list">
+          <div class="dg-step dg-good" role="listitem" data-icon="check"><span class="dg-text"><strong data-zh="正常">Working</strong><small data-zh="打开得够快，内容正确">Opens quickly, with the right content</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-warn" role="listitem" data-icon="clock"><span class="dg-text"><strong data-zh="降级">Degraded</strong><small data-zh="变慢（超过 2 或 3 秒，视检查而定），或在一次运行中失败">Slow (over 2 or 3 seconds, depending on the check), or failed in one run</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-bad" role="listitem" data-icon="power"><span class="dg-text"><strong data-zh="停止服务">Down</strong><small data-zh="连续两次运行（30 分钟）都失败；每次失败都会立即重试一次">Failed in 2 runs in a row (30 minutes); each failure is retried once straight away</small></span></div>
         </div>
-      </details>
+      </figure>
+
+      <h3 data-zh="每项功能">Each function</h3>
+      <div class="table-wrap">
+        <table class="health-functions">
+          <thead><tr><th data-zh="功能">Function</th><th data-zh="如何检查">How it’s tested</th><th data-zh="正常时">When it works</th><th data-zh="出问题时访客会注意到">If it stops, a visitor notices</th></tr></thead>
+          <tbody>
+            <tr data-function="pages"><td><strong data-zh="页面">Pages</strong></td><td data-zh="打开首页">Opens the home page</td><td><span class="mark mark-good" aria-hidden="true">✓</span> <span data-zh="博客能打开">The blog opens</span></td><td><span class="mark mark-bad" aria-hidden="true">✗</span> <span data-zh="博客完全打不开（停止服务）">The blog doesn’t open at all (down)</span></td></tr>
+            <tr data-function="posts"><td><strong data-zh="文章">Posts</strong></td><td data-zh="读取已发布文章列表；自检读取文章数据库">Reads the published post list; the self-check reads the posts database</td><td><span class="mark mark-good" aria-hidden="true">✓</span> <span data-zh="文章列表出现">The list of posts appears</span></td><td><span class="mark mark-bad" aria-hidden="true">✗</span> <span data-zh="看不到文章，博主无法保存（停止服务）">No posts, and the owner can’t save (down)</span></td></tr>
+            <tr data-function="storage"><td><strong data-zh="已发布内容的存储">Published content storage</strong></td><td data-zh="自检读取存储">The self-check reads the storage</td><td><span class="mark mark-good" aria-hidden="true">✓</span> <span data-zh="文章、图片和文件能打开">Posts, pictures and files open</span></td><td><span class="mark mark-bad" aria-hidden="true">✗</span> <span data-zh="文章、图片和文件打不开（停止服务）">Posts, pictures and files don’t open (down)</span></td></tr>
+            <tr data-function="reactions"><td><strong data-zh="心情">Reactions</strong></td><td data-zh="读取测试文章的心情计数；自检读取心情数据库">Reads the reaction counts of a test post; the self-check reads the reactions database</td><td><span class="mark mark-good" aria-hidden="true">✓</span> <span data-zh="文章下方显示心情">Reactions show under each post</span></td><td><span class="mark mark-bad" aria-hidden="true">✗</span> <span data-zh="看不到也无法留下心情，文章照常可读（降级）">Can’t see or leave reactions; posts still read fine (degraded)</span></td></tr>
+            <tr data-function="api"><td><strong data-zh="博客 API">Blog API</strong></td><td data-zh="以访客身份打开 /api/me">Opens /api/me as a guest</td><td><span class="mark mark-good" aria-hidden="true">✓</span> <span data-zh="网站背后的小程序能响应">The small program behind the site answers</span></td><td><span class="mark mark-bad" aria-hidden="true">✗</span> <span data-zh="心情、登录和写作都不可用（停止服务）">Reactions, sign-in and writing stop (down)</span></td></tr>
+            <tr data-function="signin"><td><strong data-zh="Microsoft 登录">Microsoft sign-in</strong></td><td data-zh="登录链接应转到 Microsoft；自检读取登录设置">The sign-in link must lead to Microsoft; the self-check reads the sign-in settings</td><td><span class="mark mark-good" aria-hidden="true">✓</span> <span data-zh="登录按钮把人带到 Microsoft">Sign in leads to Microsoft</span></td><td><span class="mark mark-bad" aria-hidden="true">✗</span> <span data-zh="博主无法登录写作，读者不受影响（降级）">The owner can’t sign in to write; readers aren’t affected (degraded)</span></td></tr>
+            <tr data-function="docs"><td><strong data-zh="文档">Docs</strong></td><td data-zh="打开文档页面">Opens the docs page</td><td><span class="mark mark-good" aria-hidden="true">✓</span> <span data-zh="这些说明能打开">These pages open</span></td><td><span class="mark mark-bad" aria-hidden="true">✗</span> <span data-zh="只是看不到说明文档（降级）">Only the documentation is missing (degraded)</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <figure class="dg">
+        <figcaption data-zh="每项功能的检查次数（每次运行、每个地点）">Checks per function (each run, from each place)</figcaption>
+        <ul class="bar-chart bar-max-2">
+          <li data-key="pages" data-links="1" data-self="0"><span class="bar-label" data-zh="页面">Pages</span><span class="bar"><span class="bar-unit bar-a"></span></span><span class="bar-value">1</span></li>
+          <li data-key="posts" data-links="1" data-self="1"><span class="bar-label" data-zh="文章">Posts</span><span class="bar"><span class="bar-unit bar-a"></span><span class="bar-unit bar-b"></span></span><span class="bar-value">2</span></li>
+          <li data-key="storage" data-links="0" data-self="1"><span class="bar-label" data-zh="已发布内容的存储">Published content storage</span><span class="bar"><span class="bar-unit bar-b"></span></span><span class="bar-value">1</span></li>
+          <li data-key="reactions" data-links="1" data-self="1"><span class="bar-label" data-zh="心情">Reactions</span><span class="bar"><span class="bar-unit bar-a"></span><span class="bar-unit bar-b"></span></span><span class="bar-value">2</span></li>
+          <li data-key="api" data-links="1" data-self="0"><span class="bar-label" data-zh="博客 API">Blog API</span><span class="bar"><span class="bar-unit bar-a"></span></span><span class="bar-value">1</span></li>
+          <li data-key="signin" data-links="1" data-self="1"><span class="bar-label" data-zh="Microsoft 登录">Microsoft sign-in</span><span class="bar"><span class="bar-unit bar-a"></span><span class="bar-unit bar-b"></span></span><span class="bar-value">2</span></li>
+          <li data-key="docs" data-links="1" data-self="0"><span class="bar-label" data-zh="文档">Docs</span><span class="bar"><span class="bar-unit bar-a"></span></span><span class="bar-value">1</span></li>
+        </ul>
+        <p class="bar-legend"><span class="bar-key bar-a" aria-hidden="true"></span> <span data-zh="打开页面或链接（共 6 项）">Page or link opened (6 in all)</span> <span class="bar-key bar-b" aria-hidden="true"></span> <span data-zh="博客自检（共 4 项）">The blog’s self-check (4 in all)</span></p>
+      </figure>
 
       <h3 data-zh="哪些没有被检查">What isn’t tested</h3>
       <p data-zh="访客无法检查需要博主登录或会改动内容的事情：">A guest can’t check anything that needs the owner to sign in or that changes content:</p>
       <ul>
-        <li data-zh="登录本身（需要博主的 Microsoft 账户）以及登录后的会话。">Signing in itself (it needs the owner’s Microsoft account), and being signed in.</li>
-        <li data-zh="写作、编辑、发布、取消发布和删除文章。">Writing, editing, publishing, unpublishing and deleting posts.</li>
-        <li data-zh="给文章上传或删除图片和文件。">Uploading pictures and files to a post, or deleting them.</li>
+        <li data-zh="登录本身，以及登录后的写作、编辑、发布和删除。">Signing in itself, and writing, editing, publishing and deleting once signed in.</li>
+        <li data-zh="上传或删除图片和文件。">Uploading or deleting pictures and files.</li>
         <li data-zh="供 AI 助手使用的 Microsoft API（需要 Microsoft 访问令牌）。">The Microsoft API for AI agents (it needs a Microsoft access token).</li>
-        <li data-zh="留下心情（这是一次写入）以及它的频率限制。">Leaving a reaction (that is a write), and its rate limit.</li>
-        <li data-zh="博主删除或更换图片后，CloudFront 缓存的清除。">Clearing CloudFront’s copy after the owner deletes or replaces a picture.</li>
-        <li data-zh="某一篇文章的链接预览（文章可能被取消发布或删除）。">The link preview of a particular post (posts can be unpublished or deleted).</li>
+        <li data-zh="留下心情（这是一次写入）。">Leaving a reaction (that is a write).</li>
       </ul>
-      <details class="dg-more">
-        <summary data-zh="技术细节：规则">Technical details: rules</summary>
-        <div>
-          <ul>
-            <li>The tests are read only and must never change content: <code>GET</code> and <code>HEAD</code> only, never <code>POST</code>, <code>PUT</code> or <code>DELETE</code>.</li>
-            <li>No cookies, no <code>Authorization</code> header and no credentials of any kind.</li>
-            <li>At most one run every 15 minutes (plus one retry of a failed check).</li>
-          </ul>
-        </div>
-      </details>
 
-      <p><a href="/docs/health.md" data-zh="完整技术版本（Markdown）">Full technical version (Markdown)</a></p>
+      <p><a href="/docs/health.md" data-zh="面向机器的技术版本（Markdown）">Technical version for machines (Markdown)</a></p>
     </article>
   </main>
   <footer class="dl-footer">

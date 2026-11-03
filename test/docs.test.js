@@ -17,13 +17,48 @@ test('the API guide lists every managed route with its scope and links the Auth 
   expect(guide).toContain('`api.access`');
 });
 
+// The API tab (/docs#api) is for people: flows, numbers, tables and a chart, with which endpoints exist and what
+// each is for, but no exact request or response formats; /docs/api.md is the full reference for machines.
+test('the API tab lists the same nine endpoints and permissions as the guide, without exact formats', () => {
+  const html = fs.readFileSync(path.join(WEB, 'docs.html'), 'utf8');
+  const start = html.indexOf('<article id="api"');
+  const tab = html.slice(start, html.indexOf('</article>', start));
+  expect(start).toBeGreaterThan(0);
+  expect(html).toContain('<a href="#api" data-tab="api">API</a>');
+  expect(fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8')).toContain("api: staticTab");
+  const words = { 'blog.read': ['读', 'Read'], 'blog.write': ['写', 'Write'], 'blog.delete': ['删除', 'Delete'] };
+  const rows = [...tab.matchAll(/<tr data-route="([^"]+)"><td class="mono">[^<]+<\/td><td data-zh="[^"]+">[^<]+<\/td><td data-zh="([^"]+)">([^<]+)<\/td><\/tr>/g)]
+    .map(([, route, zh, en]) => [route, [zh, en]]);
+  expect(Object.fromEntries(rows)).toEqual(Object.fromEntries(Object.entries(routes).map(([key, { scope }]) => [key, words[scope]])));
+  // The chart: endpoints per permission, matching routes.json.
+  for (const scope of Object.keys(words)) {
+    const count = Object.values(routes).filter((route) => route.scope === scope).length;
+    const bar = tab.match(new RegExp(`<li data-scope="${scope.replace('.', '\\.')}">([\\s\\S]*?)</li>`))[1];
+    expect([scope, bar.match(/class="bar-unit/g).length, bar.match(/<span class="bar-value">(\d+)</)[1]]).toEqual([scope, count, String(count)]);
+  }
+  expect(tab).toMatch(/class="dg-flow"/);
+  expect(tab.match(/class="dg-stat"/g).length).toBeGreaterThanOrEqual(4);
+  expect(tab).not.toMatch(/<code|<pre|<details|\{"|Content-Type|application\/|\b(201|401|403|404|409|413|415)\b/);
+  expect(tab).toContain('<a href="/docs/api.md" data-zh="面向机器的技术版本（Markdown）">Technical version for machines (Markdown)</a>');
+  expect(html).toContain('<link rel="alternate" type="text/markdown" href="/docs/api.md"');
+  expect(fs.existsSync(path.join(WEB, 'docs-api.html'))).toBe(false);
+  expect(fs.readFileSync(path.join(WEB, 'app.js'), 'utf8')).toContain("href: '/docs#api', text: 'API'");
+});
+
+test('the first tab is called Architecture, with its #architecture anchor kept', () => {
+  const html = fs.readFileSync(path.join(WEB, 'docs.html'), 'utf8');
+  expect(html).toContain('<a href="#architecture" data-tab="architecture" data-zh="架构">Architecture</a>');
+  expect(fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8')).toContain("architecture: () => t('架构', 'Architecture'),");
+  expect(html + fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8')).not.toContain('Technical architecture');
+});
+
 test('the API origin is filled in at deploy time, never hard-coded', () => {
   expect(guide.split('{{MICROSOFT_API_URL}}')).toHaveLength(3);
   expect(guide).not.toMatch(/execute-api\.[a-z0-9-]+\.amazonaws\.com/);
 });
 
 test('no retired blog token instructions remain in the site', () => {
-  const files = ['docs/api.md', 'docs/health.md', 'docs-api.html', 'docs.html', 'index.html', 'app.js', 'docs.js', 'docs-api.js', 'i18n.js'];
+  const files = ['docs/api.md', 'docs/health.md', 'docs.html', 'index.html', 'app.js', 'docs.js', 'i18n.js'];
   for (const file of files) {
     const text = fs.readFileSync(path.join(WEB, file), 'utf8');
     for (const retired of ['/api/tokens', 'x-blog-token', 'dliu_credentials', 'blog_0123', 'Generate token', 'Copy command']) {
@@ -52,7 +87,7 @@ test('only signed-in authors get the who-reacted list, linked to the traffic mon
 });
 
 test('every page loads the traffic monitor\'s page script with one plain async tag', () => {
-  for (const file of ['index.html', 'docs.html', 'docs-api.html']) {
+  for (const file of ['index.html', 'docs.html']) {
     const text = fs.readFileSync(path.join(WEB, file), 'utf8');
     expect([file, text.split('traffic.dliu.com').length - 1]).toEqual([file, 1]);
     expect([file, text.includes('<script src="https://traffic.dliu.com/t/s.js" async></script>')]).toEqual([file, true]);
@@ -61,7 +96,6 @@ test('every page loads the traffic monitor\'s page script with one plain async t
     expect([file, fs.readFileSync(path.join(WEB, file), 'utf8').includes('t/s.js')]).toEqual([file, false]);
   }
   expect(fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8')).toContain("from './docs-nav.js'");
-  expect(fs.readFileSync(path.join(WEB, 'docs-api.js'), 'utf8')).toContain("from './docs-nav.js'");
 });
 
 test('the Security tab lists the live penetration test before the threat model, with expected and actual results', () => {
