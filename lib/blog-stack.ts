@@ -84,17 +84,6 @@ export class BlogStack extends Stack {
       deletionProtection: true,
       removalPolicy: RemovalPolicy.RETAIN,
     });
-    // Retired: the old blog API tokens (hashes only). Nothing reads or writes it any more; the Microsoft API
-    // replaced it. Kept, and retained, so its history is never deleted by a deploy (dropping it from the
-    // template would apply the old DESTROY policy).
-    new dynamodb.TableV2(this, 'Tokens', {
-      partitionKey: { name: 'id', type: dynamodb.AttributeType.STRING },
-      billing: dynamodb.Billing.onDemand(),
-      timeToLiveAttribute: 'ttl',
-      deletionProtection: true,
-      removalPolicy: RemovalPolicy.RETAIN,
-    });
-
     // Readers' reactions: per post a counts item and one item per visitor (dl_vid); per IP hash,
     // rate-limit windows that expire through TTL.
     const reactionsTable = new dynamodb.TableV2(this, 'Reactions', {

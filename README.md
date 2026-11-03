@@ -37,7 +37,7 @@ flowchart LR
 | API Gateway HTTP API | The managed API for agents and scripts (`MicrosoftApiUrl` output, an `execute-api` origin). A JWT authorizer checks Microsoft access tokens and each route's scope (`lambda/api/routes.json`); the Lambda checks the rest (`lambda/api/api-access.js`). |
 | Media invalidator (`lambda/invalidate`) | S3 sends `media/` deletes and non-app uploads to EventBridge, then an SQS queue; once a minute this function clears those paths from CloudFront. It may only create invalidations on this distribution. |
 | Lambda (`lambda/api`) | Authoring API, Microsoft sign-in and post pages with link-preview tags (`page.js`). Reached only through CloudFront (Function URL with IAM auth + OAC). Reserved concurrency is 10. |
-| DynamoDB | `Posts` is the source of truth for posts, drafts included (on-demand, point-in-time recovery, deletion protection). `Tokens` held the retired blog API tokens as SHA-256 hashes; it is no longer used, but kept (retained, deletion protection, TTL still removing expired records) so the change deletes no data. `Reactions` holds per-post counts (`pk=post#<id>`, `sk=counts`), each reader's reaction (`sk=visitor#<dl_vid>`) and hashed-IP rate-limit windows (`pk=viewer#<sha256>`, TTL). |
+| DynamoDB | `Posts` is the source of truth for posts, drafts included (on-demand, point-in-time recovery, deletion protection). `Reactions` holds per-post counts (`pk=post#<id>`, `sk=counts`), each reader's reaction (`sk=visitor#<dl_vid>`) and hashed-IP rate-limit windows (`pk=viewer#<sha256>`, TTL). |
 
 Cost at low traffic is a few cents a month for requests and storage, plus the Route 53 zone the other dliu.com apps already share. Nothing is billed per hour.
 
@@ -69,7 +69,7 @@ The site is in Chinese and English. It follows the browser's language (any `zh-*
 
 ## API for AI agents and scripts
 
-Agents and scripts write posts through a separate managed API, not the website. It accepts Microsoft-issued user access tokens from Central Microsoft sign-in at https://auth.dliu.com, which also documents how to obtain, save and send them (https://auth.dliu.com/docs/api). The blog has no API tokens of its own any more; `/admin/tokens` now redirects to the API guide.
+Agents and scripts write posts through a separate managed API, not the website. It accepts Microsoft-issued user access tokens from Central Microsoft sign-in at https://auth.dliu.com, which also documents how to obtain, save and send them (https://auth.dliu.com/docs/api). The blog has no API tokens of its own any more.
 
 The API guide is `web/docs/api.md`, served at https://blog.dliu.com/docs/api.md (and `/docs/api`). It contains `{{MICROSOFT_API_URL}}`, which the deployment replaces with the stack's `MicrosoftApiUrl` output, so readers never need AWS access to find the API. To let an AI agent write a post, save a token at auth.dliu.com and give the agent only that guide's link and a specific task.
 
@@ -178,7 +178,6 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 | `/` | List of posts. `/?s=word` searches titles and excerpts; `/?m=202510` shows one month. |
 | `/<postId>` | The post, e.g. `/2026102701`. `/<postId>/` redirects to it. |
 | `/admin` | All posts and drafts (signed in) |
-| `/admin/tokens` | Redirects to `/docs/api` (blog API tokens are retired) |
 | `/docs` | Architecture, cost and security |
 | `/docs/api`, `/docs/api.md` | API guide for agents (page and Markdown) |
 | `/posts/<postId>` | `/<postId>` (301) |

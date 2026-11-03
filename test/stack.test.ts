@@ -20,15 +20,9 @@ test('posts table is keyed by post id, with no index, and is protected', () => {
   template.hasResource('AWS::DynamoDB::GlobalTable', { DeletionPolicy: 'Retain' });
 });
 
-test('the retired API tokens table is kept with its data: retained, deletion-protected, and unused', () => {
-  template.resourceCountIs('AWS::DynamoDB::GlobalTable', 3);
-  const [tokens] = Object.entries(template.findResources('AWS::DynamoDB::GlobalTable'))
-    .filter(([id]) => id.startsWith('Tokens')).map(([, resource]) => resource as any);
-  expect(tokens.DeletionPolicy).toBe('Retain');
-  expect(tokens.UpdateReplacePolicy).toBe('Retain');
-  expect(tokens.Properties.KeySchema).toEqual([{ AttributeName: 'id', KeyType: 'HASH' }]);
-  expect(tokens.Properties.TimeToLiveSpecification).toEqual({ AttributeName: 'ttl', Enabled: true });
-  expect(tokens.Properties.Replicas).toEqual([expect.objectContaining({ DeletionProtectionEnabled: true })]);
+test('only the posts and reactions tables remain; the retired API tokens table is gone', () => {
+  template.resourceCountIs('AWS::DynamoDB::GlobalTable', 2);
+  expect(Object.keys(template.findResources('AWS::DynamoDB::GlobalTable')).some((id) => id.startsWith('Tokens'))).toBe(false);
   expect(JSON.stringify(template.toJSON())).not.toContain('TOKENS_TABLE');
 });
 

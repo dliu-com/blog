@@ -700,8 +700,6 @@
     try {
       if (path === '/admin') return await postsList(me);
       if (path === '/admin/new') return await newPost();
-      // The old API token page: blog tokens were replaced by Microsoft access tokens.
-      if (path === '/admin/tokens') return location.replace('/docs/api');
       const match = /^\/admin\/posts\/(\d{10})$/.exec(path);
       if (match) return await editor(me, match[1]);
       renderNav(me);

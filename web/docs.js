@@ -45,7 +45,7 @@ function architecture(root) {
   root.append(stats([
     [t('0 台服务器', '0 servers'), t('没人写作时什么都不运行', 'nothing runs while nobody is writing'), 'power'],
     [t('1 个 Lambda', '1 Lambda'), t('用于作者、心情和文章页的分享预览', 'for the author, reactions and post pages’ share previews'), 'lambda'],
-    [t('3 张表', '3 tables'), t('DynamoDB 保存文章、草稿和心情（另有一张已停用的旧令牌表）', 'DynamoDB holds posts, drafts and reactions (plus a retired token table)'), 'dynamodb'],
+    [t('2 张表', '2 tables'), t('DynamoDB 保存文章、草稿和心情', 'DynamoDB holds posts, drafts and reactions'), 'dynamodb'],
     [t('1 个 CloudFront', '1 CloudFront'), t('提供每个页面、文章、图片和网站 API 调用', 'serves every page, post, picture and website API call'), 'cloudfront'],
   ]));
 
@@ -170,7 +170,6 @@ function architecture(root) {
   ]));
   root.append(table([t('存储', 'Store'), t('保存的内容', 'What it holds'), t('公开', 'Public')], [
     [t('文章表', 'Posts table'), t('每篇文章：标题、Markdown 正文、状态、日期、文件列表', 'Every post: title, Markdown body, status, dates, file list'), t('否', 'No')],
-    [t('令牌表（已停用）', 'Tokens table (retired)'), t('旧的博客 API 令牌：名称、密钥的 SHA-256 哈希、有效期。已不再使用，为保留历史而保留', 'The old blog API tokens: name, SHA-256 hash of the secret, expiry. No longer used; kept so its history is not deleted'), t('否', 'No')],
     [t('心情表', 'Reactions table'), t('每篇文章的计数；按访客 ID 保存的每位读者的心情；IP 哈希限流窗口', 'Counts per post; each reader’s reaction by visitor ID; hashed-IP rate-limit windows'), t('计数公开；访客 ID 只给已登录的作者', 'Counts to everyone; visitor IDs to signed-in authors only')],
     [mono(t('content/', 'content/')), t('只有已发布文章的 JSON', 'JSON for published posts only'), t('是，通过 CloudFront', 'Yes, through CloudFront')],
     [mono(t('media/', 'media/')), t('文章附件（随机、未列出的路径）', 'Files attached to posts (random, unlisted paths)'), t('是，通过 CloudFront', 'Yes, through CloudFront')],
@@ -297,7 +296,7 @@ function security(root) {
     [t('路由', 'Routes'), t('只有九个文章和文件路由；心情、登录和网站页面不在这个 API 上。删除需要单独的 blog.delete 权限', 'Only nine post and file routes; reactions, sign-in and site pages are not on this API. Deleting needs the separate blog.delete permission')],
     [t('不混用', 'No fallback'), t('Microsoft API 从不读取 Cookie；网站的 /api/* 从不读取持有者令牌', 'The Microsoft API never reads cookies; the website’s /api/* never reads bearer tokens')],
     [t('审计', 'Audit'), t('通过 Microsoft API 保存的文章在 updatedVia 中记为 “Microsoft API”；不记录 Authorization 请求头或完整请求', 'Posts saved through the Microsoft API record “Microsoft API” in updatedVia; the Authorization header and full requests are never logged')],
-    [t('旧令牌', 'Old tokens'), t('以前的 blog_… API 令牌不再被接受，/admin/tokens 已移除；它们的表被保留（未使用），不删除历史数据', 'The former blog_… API tokens are no longer accepted and /admin/tokens is gone; their table is retained, unused, so no history is deleted')],
+    [t('旧令牌', 'Old tokens'), t('以前的 blog_… API 令牌不再被接受；/admin/tokens 和它们的表都已删除', 'The former blog_… API tokens are no longer accepted; /admin/tokens and their table have been deleted')],
   ]));
 
   add('h2', t('防护措施', 'Controls'));
@@ -353,7 +352,6 @@ function security(root) {
     t('Microsoft 访问令牌在过期（约一小时）前不能单独撤销；取消用户的 api.access 分配可阻止新令牌。', 'A Microsoft access token cannot be revoked on its own before it expires (about an hour); removing the user’s api.access assignment stops new ones.'),
     t('有 blog.read 的令牌能读取所有草稿，有 blog.write 的能发布；没有只能写草稿的权限。', 'A token with blog.read can read every draft, and one with blog.write can publish; there is no draft-only permission.'),
     t('没有按调用者的上传配额，助手的文章上线前也没有审批步骤。', 'There is no per-caller upload quota or approval step before an agent’s post goes live.'),
-    t('旧令牌表被保留但不再使用；过期的旧令牌记录仍会按原有的 TTL 自动删除。', 'The old token table is kept but unused; expired old token records are still removed by its existing TTL.'),
     t('删除的图片约两分钟内从 CloudFront 清除，但已经显示过它的浏览器可能最多保留一天。', 'A deleted picture leaves CloudFront within about two minutes, but a browser that already showed it may keep it for up to a day.'),
     t('超出免费额度的大量阅读流量会计费；页面在边缘缓存，但每次浏览文章还会从 Lambda 加载心情。', 'Heavy reader traffic beyond the free tier is billed; pages are cached at the edge, but each post view also loads its reactions from the Lambda.'),
   ]));
