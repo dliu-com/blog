@@ -33,6 +33,9 @@ import apiRoutes from '../lambda/api/routes.json';
 const ROOT = path.join(__dirname, '..');
 
 export const PARAMETER_PREFIX = '/blog';
+/** Shared by every dliu.com app; owned by the dliu-com/audit stack. */
+export const SHARED_TENANT_PARAMETER = '/dliu/entra-tenant-id';
+export const SHARED_API_APP_PARAMETER = '/dliu/api-app-id';
 
 // SPA rewrites (/<postId>, /admin…, /docs) and old WordPress URLs (/<slug>/, /wp-admin, /YYYY/MM/, /page/N/). Shared with the dev server.
 export const VIEWER_REQUEST_CODE = fs.readFileSync(path.join(ROOT, 'functions/viewer-request.js'), 'utf8');
@@ -54,7 +57,7 @@ export interface BlogStackProps extends StackProps {
   /**
    * Managed API for trusted tools: API Gateway checks Microsoft Entra access tokens (scopes blog.read,
    * blog.write, blog.delete) before the API Lambda checks tenant, client, identity and the api.access role.
-   * Needs the /blog/api-tenant-id, /blog/api-audience and /blog/api-client-id parameters.
+   * Reads the shared /dliu/entra-tenant-id and /dliu/api-app-id parameters at deploy time.
    */
   microsoftApi?: boolean;
 }
@@ -141,6 +144,7 @@ export class BlogStack extends Stack {
         REACTIONS_TABLE: reactionsTable.tableName,
         CONTENT_BUCKET: contentBucket.bucketName,
         PARAMETER_PREFIX,
+        SHARED_TENANT_PARAMETER,
       },
       logGroup: new logs.LogGroup(this, 'ApiLogs', {
         retention: logs.RetentionDays.THREE_MONTHS,
@@ -164,8 +168,9 @@ export class BlogStack extends Stack {
       resources: [contentBucket.bucketArn],
     }));
     apiHandler.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['ssm:GetParameters'],
-      resources: [this.formatArn({ service: 'ssm', resource: 'parameter', resourceName: PARAMETER_PREFIX.slice(1) + '/*' })],
+      actions: ['ssm:GetParameters'], // lambda/api/config.js: one batch read of exactly these three
+      resources: [`${PARAMETER_PREFIX}/entra-client-id`, `${PARAMETER_PREFIX}/entra-client-secret`, SHARED_TENANT_PARAMETER]
+        .map((name) => this.formatArn({ service: 'ssm', resource: 'parameter', resourceName: name.slice(1) })),
     }));
     apiHandler.addToRolePolicy(new iam.PolicyStatement({
       actions: ['kms:Decrypt'],
@@ -177,10 +182,10 @@ export class BlogStack extends Stack {
     // ---------- Microsoft API (trusted tools and agents; see /docs/api) ----------
     let microsoftApiUrl: string | undefined;
     if (props.microsoftApi) {
-      const parameter = (name: string) => ssm.StringParameter.valueForStringParameter(this, `${PARAMETER_PREFIX}/api-${name}`);
-      const tenantId = parameter('tenant-id');
-      const audience = parameter('audience');
-      const clientId = parameter('client-id');
+      const tenantId = ssm.StringParameter.valueForStringParameter(this, SHARED_TENANT_PARAMETER);
+      // The shared dliu API app is both the token audience and the only approved client (azp).
+      const audience = ssm.StringParameter.valueForStringParameter(this, SHARED_API_APP_PARAMETER);
+      const clientId = audience;
       const httpApi = new apigateway.HttpApi(this, 'MicrosoftApi', {
         description: 'Blog API: Microsoft Entra access tokens, delegated permissions and assigned users',
       });

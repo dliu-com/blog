@@ -118,21 +118,20 @@ You only need to do this once, and again whenever the client secret expires.
 
 1. In the Entra admin centre, create an app registration in your tenant (single tenant). Add a **Web** redirect URI: `https://blog.dliu.com/auth/callback`.
 2. Create a client secret.
-3. Run `make set-secrets`. It asks for the client ID, the client secret and the tenant ID, and stores them in SSM under `/blog/` (the secret as a SecureString). Values never go on the command line or into the repository.
+3. Run `make set-secrets`. It asks for the client ID and the client secret, and stores them in SSM as `/blog/entra-client-id` and `/blog/entra-client-secret` (the secret as a SecureString). Values never go on the command line or into the repository. The tenant ID is shared by every dliu.com app: the Lambda reads `/dliu/entra-tenant-id`, a String parameter owned by the dliu-com/audit stack.
 
-The Lambda reads these values at runtime, so after renewing a secret you only need to run `make set-secrets` again; no redeploy is needed, and the new value is picked up within five minutes. Sessions are signed with a key derived from the secret, so renewing it signs everyone out.
+The Lambda reads these three values at runtime (its role may read only those three parameters), so after renewing a secret you only need to run `make set-secrets` again; no redeploy is needed, and the new value is picked up within five minutes. Sessions are signed with a key derived from the secret, so renewing it signs everyone out.
 
 Only accounts in the `dliu.com` domain may write. Set the `ALLOWED_DOMAIN` environment variable on the function to change this.
 
 ### Managed API settings
 
-The managed API reuses the shared dliu API app registration (it exposes the `blog.read`, `blog.write` and `blog.delete` scopes and the user-only **dliu API user** role, `api.access`, shared by all dliu.com APIs; the token carries the value `api.access`). Assign it only to the account meant to use the API: other `dliu.com` organisation accounts keep normal website sign-in and cookies but get no API rights. Before deploying, create these non-secret String parameters; CloudFormation reads them at deploy time:
+The managed API reuses the shared dliu API app registration (it exposes the `blog.read`, `blog.write` and `blog.delete` scopes and the user-only **dliu API user** role, `api.access`, shared by all dliu.com APIs; the token carries the value `api.access`). Assign it only to the account meant to use the API: other `dliu.com` organisation accounts keep normal website sign-in and cookies but get no API rights. CloudFormation reads two shared, non-secret String parameters at deploy time. The dliu-com/audit stack owns them, so they must exist before you deploy:
 
 | Parameter | Value |
 | --- | --- |
-| `/blog/api-tenant-id` | The Microsoft Entra tenant ID |
-| `/blog/api-audience` | The shared dliu API application ID (the token audience) |
-| `/blog/api-client-id` | The same application ID (the only approved SPA client, `azp`) |
+| `/dliu/entra-tenant-id` | The Microsoft Entra tenant ID (the token issuer and `tid`) |
+| `/dliu/api-app-id` | The shared dliu API application ID: the token audience and the only approved SPA client (`azp`) |
 
 Changing them needs a redeploy. Deploy with `-c microsoftApi=false` to leave the managed API out.
 

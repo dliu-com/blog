@@ -81,7 +81,7 @@ function architecture(root) {
         nodes: [
           { icon: 'lambda', title: t('API Lambda', 'API Lambda'), text: t('登录、文章、上传、心情、文章页分享标签；只在被调用时运行', 'Sign-in, posts, uploads, reactions, post-page share tags; runs only when called') },
           { icon: 'dynamodb', title: t('DynamoDB', 'DynamoDB'), text: t('文章、草稿和心情计数；按需计费', 'Posts, drafts and reaction counts; on-demand billing') },
-          { icon: 'ssm', title: t('Parameter Store', 'Parameter Store'), text: t('Microsoft 应用 ID 和客户端密钥', 'Microsoft app ID and client secret') },
+          { icon: 'ssm', title: t('Parameter Store', 'Parameter Store'), text: t('本应用的 Microsoft 客户端 ID 和密钥；租户 ID 和 dliu API 应用 ID 是所有 dliu.com 应用共用的 /dliu/ 参数', 'This app’s Microsoft client ID and secret; the tenant ID and dliu API app ID are shared /dliu/ parameters used by every dliu.com app') },
           { icon: 'entra', title: t('Microsoft Entra ID', 'Microsoft Entra ID'), text: t('确认登录者身份', 'Who is signing in') },
         ],
       },
@@ -310,7 +310,7 @@ function security(root) {
     [t('文章正文', 'Post text'), t('渲染 Markdown 时不允许原始 HTML；链接和图片必须是 http(s)、mailto 或本站地址；视频只能来自 video.dliu.com，并根据视频 ID 重新生成', 'Markdown is rendered without raw HTML; links and pictures must be http(s), mailto or same-site; videos only from video.dliu.com, rebuilt from the video ID')],
     [t('响应头', 'Headers'), t('Content-Security-Policy（脚本只能来自本站和流量监控，样式只能来自本站，框架只能来自 video.dliu.com）、HSTS、X-Frame-Options DENY、nosniff、严格的 Referrer 策略', 'Content-Security-Policy (scripts from the site and the traffic monitor only, styles from the site only, frames from video.dliu.com only), HSTS, X-Frame-Options DENY, nosniff, strict referrer')],
     [t('数据', 'Data'), t('DynamoDB 开启删除保护、时间点恢复，删除堆栈时保留', 'DynamoDB with deletion protection, point-in-time recovery and retain-on-delete')],
-    [t('Lambda', 'Lambda'), t('预留并发 10，防止费用失控；日志保留 90 天；只能读写所需的 S3 前缀（pending/、media/、content/ 和网站的 index.html）', 'Reserved concurrency of 10 caps runaway cost; logs kept 90 days; S3 access limited to the prefixes it needs (pending/, media/, content/ and the site’s index.html)')],
+    [t('Lambda', 'Lambda'), t('预留并发 10，防止费用失控；日志保留 90 天；只能读写所需的 S3 前缀（pending/、media/、content/ 和网站的 index.html）；只能读取三个参数：自己的客户端 ID 和密钥，以及共用的租户 ID', 'Reserved concurrency of 10 caps runaway cost; logs kept 90 days; S3 access limited to the prefixes it needs (pending/, media/, content/ and the site’s index.html); it can read only three parameters: its own client ID and secret, and the shared tenant ID')],
     [t('Microsoft API 限流', 'Microsoft API throttling'), t('整个 API 每秒最多 10 次请求，突发 20 次；超出的请求在 Lambda 运行前就收到 429，所以泄露的令牌占不满网站共用的 Lambda', 'At most 10 requests a second for the whole API, bursts of 20; anything more gets 429 before the Lambda runs, so a leaked token can’t take over the Lambda the website shares')],
     [t('心情', 'Reactions'), t('只接受同站 JSON POST；四种取值之一；只限已发布文章；每个 IP 每小时 60 次，IP 取自 CloudFront 看到的连接（查看器函数会覆盖 x-blog-viewer，客户端无法伪造）；IP 只以哈希形式保存两小时', 'Same-site JSON POST only; one of four values; published posts only; 60 an hour per IP, taken from CloudFront’s view of the connection (the viewer function overwrites x-blog-viewer, so clients can’t choose it); IPs kept only as hashes for two hours')],
   ]));
@@ -379,7 +379,7 @@ function security(root) {
   root.append(list([
     t('互联网 → CloudFront：只允许 TLS 1.2 以上；查看器函数设置 x-blog-viewer 和文章 ID，丢弃读者发送的同名请求头。', 'Internet → CloudFront: TLS 1.2 or later; the viewer function sets x-blog-viewer and the post ID and drops any copies a reader sends.'),
     t('CloudFront → S3 和 Lambda 函数 URL：用源站访问控制（SigV4）签名；源站不接受其他任何请求。', 'CloudFront → S3 and the Lambda Function URL: signed with origin access control (SigV4); the origins accept nothing else.'),
-    t('Lambda → DynamoDB、S3、Parameter Store：IAM 角色，只有所需的操作和前缀。', 'Lambda → DynamoDB, S3, Parameter Store: an IAM role with only the actions and prefixes it needs.'),
+    t('Lambda → DynamoDB、S3、Parameter Store：IAM 角色，只有所需的操作、前缀和参数（共用的 /dliu/entra-tenant-id 只读）。', 'Lambda → DynamoDB, S3, Parameter Store: an IAM role with only the actions, prefixes and parameters it needs (the shared /dliu/entra-tenant-id is read-only).'),
     t('Lambda ↔ Microsoft Entra：通过 HTTPS 的 OpenID Connect；ID 令牌用 Microsoft 的公钥验证。', 'Lambda ↔ Microsoft Entra: OpenID Connect over HTTPS; ID tokens verified with Microsoft’s public keys.'),
     t('助手 → API Gateway（Entra 访问令牌，JWT 授权方，限流）→ 同一个 Lambda。', 'Agent → API Gateway (Entra access token, JWT authorizer, throttling) → the same Lambda.'),
     t('S3 媒体事件 → EventBridge → SQS → 清除函数 → CloudFront 清除。', 'S3 media events → EventBridge → SQS → invalidator → CloudFront invalidation.'),

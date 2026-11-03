@@ -64,15 +64,14 @@ test('content bucket is private, kept, and expires abandoned uploads', () => {
   });
 });
 
-test('api reads only its own parameters', () => {
-  template.hasResourceProperties('AWS::IAM::Policy', {
-    PolicyDocument: {
-      Statement: Match.arrayWith([Match.objectLike({
-        Action: 'ssm:GetParameters',
-        Resource: { 'Fn::Join': ['', Match.arrayWith([Match.stringLikeRegexp(':parameter/blog/\\*$')])] },
-      })]),
-    },
-  });
+test('api reads exactly its own client ID and secret plus the shared tenant ID', () => {
+  const statements = Object.values(template.findResources('AWS::IAM::Policy')) as any[];
+  const ssm = statements.flatMap((p) => p.Properties.PolicyDocument.Statement)
+    .filter((st: any) => ([] as string[]).concat(st.Action).some((a) => a.startsWith('ssm:')));
+  expect(ssm).toHaveLength(1);
+  expect(ssm[0].Action).toBe('ssm:GetParameters');
+  const names = ssm[0].Resource.map((r: any) => r['Fn::Join'][1].at(-1).replace(/^.*:parameter/, ''));
+  expect(names).toEqual(['/blog/entra-client-id', '/blog/entra-client-secret', '/dliu/entra-tenant-id']);
 });
 
 test('CloudFront routes the API, published content and media', () => {
@@ -218,12 +217,14 @@ describe('managed Microsoft API', () => {
       AuthorizerType: 'JWT',
       IdentitySource: ['$request.header.Authorization'],
       JwtConfiguration: {
-        Audience: [{ Ref: Match.stringLikeRegexp('blogapiaudience') }],
-        Issuer: { 'Fn::Join': ['', ['https://login.microsoftonline.com/', { Ref: Match.stringLikeRegexp('blogapitenantid') }, '/v2.0']] },
+        Audience: [{ Ref: Match.stringLikeRegexp('dliuapiappid') }],
+        Issuer: { 'Fn::Join': ['', ['https://login.microsoftonline.com/', { Ref: Match.stringLikeRegexp('dliuentratenantid') }, '/v2.0']] },
       },
     });
     const parameters = JSON.stringify(managed.toJSON().Parameters);
-    for (const name of ['/blog/api-tenant-id', '/blog/api-audience', '/blog/api-client-id']) expect(parameters).toContain(name);
+    expect(parameters).toContain('/dliu/entra-tenant-id');
+    expect(parameters).toContain('/dliu/api-app-id');
+    expect(parameters).not.toMatch(/\/blog\/(api|entra)-/);
     const deployed = Object.values(managed.findResources('AWS::ApiGatewayV2::Route')).map((route: any) => route.Properties);
     expect(Object.fromEntries(deployed.map((route: any) => [route.RouteKey, route.AuthorizationScopes])))
       .toEqual(Object.fromEntries(Object.entries(routes).map(([key, value]: [string, any]) => [key, [value.scope]])));
