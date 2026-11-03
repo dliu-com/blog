@@ -143,7 +143,7 @@ export class BlogStack extends Stack {
         PARAMETER_PREFIX,
       },
       logGroup: new logs.LogGroup(this, 'ApiLogs', {
-        retention: logs.RetentionDays.ONE_MONTH,
+        retention: logs.RetentionDays.THREE_MONTHS,
         removalPolicy: RemovalPolicy.DESTROY,
       }),
     });
@@ -451,7 +451,7 @@ export class BlogStack extends Stack {
       description: 'blog.dliu.com clears CloudFront copies of deleted or changed media',
       environment: { DISTRIBUTION_ID: distribution.distributionId },
       logGroup: new logs.LogGroup(this, 'MediaInvalidatorLogs', {
-        retention: logs.RetentionDays.ONE_MONTH,
+        retention: logs.RetentionDays.THREE_MONTHS,
         removalPolicy: RemovalPolicy.DESTROY,
       }),
     });

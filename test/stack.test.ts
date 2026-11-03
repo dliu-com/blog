@@ -289,3 +289,10 @@ test('the API function has least-privilege S3 access: named actions on the prefi
   const wildcard = statements.filter((st) => ([] as string[]).concat(st.Resource).includes('*'));
   expect(wildcard).toEqual([expect.objectContaining({ Action: 'kms:Decrypt', Condition: { StringEquals: { 'kms:ViaService': 'ssm.eu-west-1.amazonaws.com' } } })]);
 });
+
+test('every log group the stack manages is kept three months (90 days)', () => {
+  const groups = Object.values(template.findResources('AWS::Logs::LogGroup')) as any[];
+  expect(groups.length).toBe(2);
+  for (const g of groups) expect(g.Properties.RetentionInDays).toBe(90);
+  expect(Object.keys(template.findResources('Custom::LogRetention'))).toEqual([]);
+});
