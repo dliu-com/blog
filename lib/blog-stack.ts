@@ -42,6 +42,9 @@ export const API_DOC = 'docs/api.md';
 export const API_URL_PLACEHOLDER = '{{MICROSOFT_API_URL}}';
 // Site files other than the HTML shells. Every deploy invalidates them at CloudFront.
 export const STATIC_CACHE = 'public, max-age=300, s-maxage=86400, stale-while-revalidate=86400';
+// Requests per second (and burst) for the whole Microsoft API stage; scripts and agents need far less.
+export const MICROSOFT_API_RATE = 10;
+export const MICROSOFT_API_BURST = 20;
 
 export interface BlogStackProps extends StackProps {
   /** Subdomain under the MainDomain export. */
@@ -127,6 +130,10 @@ export class BlogStack extends Stack {
       // The account's Lambda concurrency is shared with the other dliu.com sites.
       reservedConcurrentExecutions: 10,
       description: 'blog.dliu.com posts API and Microsoft Entra sign-in',
+      // No START/END/REPORT line per call, so a request flood doesn't also run up the log bill.
+      loggingFormat: lambda.LoggingFormat.JSON,
+      systemLogLevelV2: lambda.SystemLogLevel.WARN,
+      applicationLogLevelV2: lambda.ApplicationLogLevel.INFO,
       environment: {
         SITE_URL: siteUrl,
         ROOT_DOMAIN: rootDomain,
@@ -142,8 +149,20 @@ export class BlogStack extends Stack {
     });
     table.grantReadWriteData(apiHandler);
     reactionsTable.grantReadWriteData(apiHandler);
-    contentBucket.grantReadWrite(apiHandler);
-    contentBucket.grantDelete(apiHandler);
+    // Least privilege: exactly the S3 calls in lambda/api/s3.js, on the prefixes they touch.
+    const contentKeys = (...prefixes: string[]) => prefixes.map((prefix) => contentBucket.arnForObjects(`${prefix}*`));
+    apiHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject'], // HeadObject of a finished upload, and the source of the copy into media/
+      resources: contentKeys('pending/'),
+    }));
+    apiHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:PutObject', 's3:DeleteObject'], // presigned uploads, media copies, content JSON
+      resources: contentKeys('pending/', 'media/', 'content/'),
+    }));
+    apiHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:ListBucket'], // deleting a post's media; also makes a missing upload a 404 rather than a 403
+      resources: [contentBucket.bucketArn],
+    }));
     apiHandler.addToRolePolicy(new iam.PolicyStatement({
       actions: ['ssm:GetParameters'],
       resources: [this.formatArn({ service: 'ssm', resource: 'parameter', resourceName: PARAMETER_PREFIX.slice(1) + '/*' })],
@@ -178,6 +197,9 @@ export class BlogStack extends Stack {
           authorizationScopes: [permission.scope],
         });
       }
+      // Caps what token-less or rejected-token floods can cost (see Denial of wallet in /docs#security).
+      const stage = httpApi.defaultStage!.node.defaultChild as apigateway.CfnStage;
+      stage.defaultRouteSettings = { throttlingRateLimit: MICROSOFT_API_RATE, throttlingBurstLimit: MICROSOFT_API_BURST };
       apiHandler.addEnvironment('API_GATEWAY_ID', httpApi.apiId);
       apiHandler.addEnvironment('API_TENANT_ID', tenantId);
       apiHandler.addEnvironment('API_AUDIENCE', audience);
@@ -195,7 +217,10 @@ export class BlogStack extends Stack {
       autoDeleteObjects: true,
     });
     // The post-page handler reads index.html to add each post's link-preview tags.
-    siteBucket.grantRead(apiHandler, 'index.html');
+    apiHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      resources: [siteBucket.arnForObjects('index.html')],
+    }));
     apiHandler.addEnvironment('SITE_BUCKET', siteBucket.bucketName);
 
     // CloudFront requires its certificate in us-east-1 (same pattern as the other sites).

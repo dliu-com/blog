@@ -2,7 +2,7 @@ import { App, CfnElement } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as fs from 'fs';
 import * as path from 'path';
-import { BlogStack, STATIC_CACHE } from '../lib/blog-stack';
+import { BlogStack, MICROSOFT_API_BURST, MICROSOFT_API_RATE, STATIC_CACHE } from '../lib/blog-stack';
 
 const env = { account: '123456789012', region: 'eu-west-1' };
 const template = Template.fromStack(new BlogStack(new App(), 'BlogSite', { env }));
@@ -251,4 +251,41 @@ describe('managed Microsoft API', () => {
     template.resourceCountIs('AWS::ApiGatewayV2::Api', 0);
     expect(JSON.stringify(template.toJSON())).not.toContain('API_GATEWAY_ID');
   });
+
+  test('the whole stage is throttled, which caps what a flood of requests can cost', () => {
+    managed.hasResourceProperties('AWS::ApiGatewayV2::Stage', {
+      StageName: '$default',
+      DefaultRouteSettings: { ThrottlingRateLimit: MICROSOFT_API_RATE, ThrottlingBurstLimit: MICROSOFT_API_BURST },
+    });
+    expect(MICROSOFT_API_RATE).toBeLessThanOrEqual(10);
+    expect(MICROSOFT_API_BURST).toBeLessThanOrEqual(20);
+  });
+});
+
+test('the API function logs only warnings and errors from the platform, not a line per call', () => {
+  const [, fn] = Object.entries(template.findResources('AWS::Lambda::Function'))
+    .find(([id]) => id.startsWith('ApiHandler'))! as any;
+  expect(fn.Properties.LoggingConfig).toMatchObject({ LogFormat: 'JSON', SystemLogLevel: 'WARN', ApplicationLogLevel: 'INFO' });
+});
+
+test('the API function has least-privilege S3 access: named actions on the prefixes it uses, nothing on other buckets', () => {
+  const [, fn] = Object.entries(template.findResources('AWS::Lambda::Function'))
+    .find(([id]) => id.startsWith('ApiHandler'))! as any;
+  const role = fn.Properties.Role['Fn::GetAtt'][0];
+  const statements = (Object.values(template.findResources('AWS::IAM::Policy')) as any[])
+    .filter((p) => p.Properties.Roles.some((r: any) => r.Ref === role))
+    .flatMap((p) => p.Properties.PolicyDocument.Statement);
+  const s3 = statements.filter((st) => ([] as string[]).concat(st.Action).some((a) => a.startsWith('s3:')));
+  const actions = s3.flatMap((st) => ([] as string[]).concat(st.Action));
+  expect(actions.every((a) => !a.includes('*'))).toBe(true);
+  expect(new Set(actions)).toEqual(new Set(['s3:GetObject', 's3:PutObject', 's3:DeleteObject', 's3:ListBucket']));
+  const content = JSON.stringify(s3.filter((st) => JSON.stringify(st.Resource).includes('ContentBucket')).map((st) => st.Resource));
+  for (const prefix of ['pending/*', 'media/*', 'content/*']) expect(content).toContain(prefix);
+  expect(content).not.toMatch(/"\/\*"/);
+  // The only site-bucket access is reading index.html, the page template.
+  const site = s3.filter((st) => JSON.stringify(st.Resource).includes('SiteBucket'));
+  expect(site.flatMap((st) => ([] as string[]).concat(st.Action)).every((a) => a === 's3:GetObject')).toBe(true);
+  expect(JSON.stringify(site)).toContain('/index.html');
+  const wildcard = statements.filter((st) => ([] as string[]).concat(st.Resource).includes('*'));
+  expect(wildcard).toEqual([expect.objectContaining({ Action: 'kms:Decrypt', Condition: { StringEquals: { 'kms:ViaService': 'ssm.eu-west-1.amazonaws.com' } } })]);
 });

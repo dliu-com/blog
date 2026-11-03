@@ -323,6 +323,17 @@ describe('sign-in routes', () => {
     expect(logout.cookies.join('\n')).toMatch(new RegExp(`${auth.SESSION_COOKIE}=;`));
     expect(logout.cookies.join('\n')).toMatch(/blog_signed_in=;/);
   });
+
+  test('the sign-in error page shows only an OAuth error code, never other text from the link', async () => {
+    const { call } = setup();
+    const denied = await call('GET', '/auth/callback?error=access_denied', { signedIn: false });
+    expect(denied.statusCode).toBe(401);
+    expect(denied.body).toContain('Sign-in failed: access_denied');
+    const spoof = await call('GET', `/auth/callback?error=${encodeURIComponent('<b>Call +1 555 0100 to unlock</b>')}`, { signedIn: false });
+    expect(spoof.statusCode).toBe(401);
+    expect(spoof.body).toContain('Sign-in failed: unknown_error');
+    expect(spoof.body).not.toMatch(/555|unlock|<b>/);
+  });
 });
 
 describe('retired blog API tokens', () => {

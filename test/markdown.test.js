@@ -40,6 +40,41 @@ test('HTML in posts is shown as text, never interpreted', () => {
   expect(render('<img src=x onerror=alert(1)>')).toBe('<p>&lt;img src=x onerror=alert(1)&gt;</p>');
 });
 
+test('XSS payloads: no script URL, event handler, raw tag or foreign frame ever reaches the DOM', () => {
+  // Checks every element the renderer creates (not the serialised string), so escaping in the test serialiser hides nothing.
+  const elements = [];
+  let inspected = 0;
+  const tracked = { ...doc, createElement: (tag) => { const n = node(tag); elements.push(n); return n; } };
+  const payloads = [
+    '[x](javascript:alert(1))', '[x](JAVASCRIPT:alert(1))', '[x]( javascript:alert(1))', '[x](<javascript:alert(1)>)',
+    '[x](java&#115;cript:alert(1))', '[x](&#106;avascript:alert(1))', '[x](%6Aavascript:alert(1))', '[x](java\tscript:alert(1))',
+    '[x](data:text/html;base64,PHNjcmlwdD5hbGVydCgxKTwvc2NyaXB0Pg==)', '[x](vbscript:msgbox(1))', '[x](file:///etc/passwd)',
+    '[x](//evil.example)', '[x](/\\evil.example)', '[x](\\\\evil.example)',
+    '![x](javascript:alert(1))', '![x](data:image/svg+xml,<svg onload=alert(1)>)', '![x](https://a.example/x.png" onerror="alert(1))',
+    '[x](https://a.example "t\\" onmouseover=\\"alert(1)")', '[[x](javascript:alert(1))](https://a.example)', '[x](https://a.example)(javascript:alert(1))',
+    '<script>alert(1)</script>', '<svg onload=alert(1)>', '<a href="javascript:alert(1)">x</a>', '<iframe src="https://evil.example"></iframe>',
+    '<iframe src="https://video.dliu.com/embed/2025010100" onload="alert(1)" srcdoc="<script>alert(1)</script>"></iframe>',
+    '<iframe src="https://video.dliu.com/embed/2025010100?x=1&quot; onload=&quot;alert(1)" style="aspect-ratio: 16/9; background:url(javascript:alert(1))"></iframe>',
+    'https://video.dliu.com/embed/2025010100?t=1"onload="alert(1)', 'https://video.dliu.com.evil.example/embed/2025010100',
+    'https://video.dliu.com/embed/2025010100/../../evil', '[v](https://video.dliu.com/watch?v=2025010100&autoplay=1&t=javascript:1)',
+    '```\n<script>alert(1)</script>\n```', '`<img src=x onerror=alert(1)>`', '# <img src=x onerror=alert(1)>', '> <script>alert(1)</script>',
+  ];
+  for (const source of payloads) {
+    elements.length = 0;
+    md.render(source, tracked);
+    inspected += elements.length;
+    for (const el of elements) {
+      expect(['script', 'style', 'object', 'embed', 'svg', 'form', 'base', 'meta', 'link']).not.toContain(el.tag);
+      for (const [name, value] of Object.entries(el.attrs)) {
+        expect(name).not.toMatch(/^on|^srcdoc$|^style$|^formaction$/i);
+        if (name === 'href' || name === 'src') expect(value).toMatch(/^(https?:\/\/|mailto:|\/(?![\/\\])|#)/i);
+      }
+      if (el.tag === 'iframe') expect(el.attrs.src).toMatch(/^https:\/\/video\.dliu\.com\/embed\/\d{10}(\?(t=[\d.]+|autoplay=1|muted=1|loop=1)(&(t=[\d.]+|autoplay=1|muted=1|loop=1))*)?$/);
+    }
+  }
+  expect(inspected).toBeGreaterThan(payloads.length);
+});
+
 test('pictures and links', () => {
   expect(render('![Cliffs](/media/a/b/c.jpg)')).toContain('<img src="/media/a/b/c.jpg" alt="Cliffs" loading="lazy">');
   expect(render('[site](https://dliu.com)')).toContain('<a href="https://dliu.com" target="_blank" rel="noopener noreferrer nofollow">site</a>');

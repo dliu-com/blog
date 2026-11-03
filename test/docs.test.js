@@ -72,3 +72,15 @@ test('the Security tab lists the live penetration test before the threat model, 
   expect(docs).toContain("t('预期结果', 'Expected'), t('实际结果', 'Actual result')");
   expect(docs).toMatch(/className: 'status'/);
 });
+
+test('the Security tab has a STRIDE threat model, denial of wallet and a code review with findings', () => {
+  const docs = fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8');
+  const order = ["t('威胁模型', 'Threat model')", "t('资产', 'Assets')", "t('攻击者', 'Actors')", "t('信任边界和数据流', 'Trust boundaries and data flows')",
+    "t('按组件的 STRIDE', 'STRIDE by component')", "t('拒绝钱包：被刷流量时最多花多少钱', 'Denial of wallet: the most a flood can cost')",
+    "t('代码审查', 'Code review')", "t('接受的剩余风险', 'Accepted residual risks')"].map((text) => docs.indexOf(text));
+  expect(order.every((index) => index > docs.indexOf('function security('))).toBe(true);
+  expect([...order].sort((a, b) => a - b)).toEqual(order);
+  for (const letter of ["'Spoofing'", "'Tampering'", "'Repudiation'", "'Information disclosure'", "'Denial of service'", "'Elevation of privilege'"]) expect(docs).toContain(letter);
+  for (const id of ['F1', 'F2', 'F3', 'F4']) expect(docs).toContain(`['${id}', `);
+  expect(docs).toContain('scripts/pentest.mjs');
+});

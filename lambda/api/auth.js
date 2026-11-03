@@ -162,7 +162,11 @@ function isAllowed(claims, config) {
 async function finishLogin(event, config, siteUrl, { fetchImpl = fetch, now = Date.now() } = {}) {
   const query = event.queryStringParameters || {};
   const clearAuth = cookie(AUTH_COOKIE, '', 0);
-  if (query.error) return { error: `Sign-in failed: ${query.error}`, status: 401, cookies: [clearAuth] };
+  // Only Microsoft's error codes (e.g. access_denied) are shown; any other text in the link is not echoed back.
+  if (query.error) {
+    const code = /^[a-z_]{1,40}$/.test(query.error) ? query.error : 'unknown_error';
+    return { error: `Sign-in failed: ${code}`, status: 401, cookies: [clearAuth] };
+  }
 
   const transient = verifySigned(parseCookies(event)[AUTH_COOKIE], loginKey(config), now);
   if (!transient || transient.typ !== 'login' || !query.state || query.state !== transient.state || !query.code) {
