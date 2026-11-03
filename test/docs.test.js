@@ -63,3 +63,12 @@ test('every page loads the traffic monitor\'s page script with one plain async t
   expect(fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8')).toContain("from './docs-nav.js'");
   expect(fs.readFileSync(path.join(WEB, 'docs-api.js'), 'utf8')).toContain("from './docs-nav.js'");
 });
+
+test('the Security tab lists the live penetration test before the threat model, with expected and actual results', () => {
+  const docs = fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8');
+  const pentest = docs.indexOf("t('线上渗透测试', 'Live penetration test')");
+  expect(pentest).toBeGreaterThan(docs.indexOf('function security('));
+  expect(pentest).toBeLessThan(docs.indexOf("t('威胁模型', 'Threat model')"));
+  expect(docs).toContain("t('预期结果', 'Expected'), t('实际结果', 'Actual result')");
+  expect(docs).toMatch(/className: 'status'/);
+});
