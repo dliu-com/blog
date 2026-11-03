@@ -8,6 +8,7 @@ const apiAccess = require('./api-access');
 const ROUTES = require('./routes.json');
 const reactions = require('./reactions');
 const { createTemplateLoader, renderPostPage } = require('./page');
+const { checkHealth, createHealthChecks, healthResponse } = require('./health');
 const {
   BadRequest, FILE_ID, MAX_FILES, MAX_POSTS_PER_DAY, POST_ID, buildIndex, compareSummaries, derive, newFileId, nextPostNumber, postIdFor, postIdPrefix,
   parsePostUpdate, parseUpload, toApiPost, toPublicPost, toSummary,
@@ -82,6 +83,7 @@ function createHandler(deps = {}) {
   const store = deps.store || createStore();
   const files = deps.files || createFiles();
   const loadTemplate = deps.loadTemplate || createTemplateLoader();
+  const healthChecks = deps.healthChecks || createHealthChecks({ loadConfig: getConfig });
   const fetchImpl = deps.fetchImpl || ((...args) => fetch(...args));
   const clock = deps.now || Date.now;
   const isoNow = () => new Date(clock()).toISOString();
@@ -351,6 +353,11 @@ function createHandler(deps = {}) {
         const caller = apiAccess.authorize(event, route.scope);
         if (caller.status) return json(caller.status, { error: caller.error });
         return await api(method, path.slice('/api/'.length).split('/').filter(Boolean), event, { ...caller, via: 'microsoft-api' });
+      }
+      // status.dliu.com's guest check: reads nothing from the request (no cookies, headers or query string).
+      if (path === '/health') {
+        if (method !== 'GET' && method !== 'HEAD') return json(405, { error: 'Method not allowed' });
+        return healthResponse(await checkHealth(healthChecks), method);
       }
       if (path === '/index.html') return await postPage(event, method);
       if (path.startsWith('/auth/')) {

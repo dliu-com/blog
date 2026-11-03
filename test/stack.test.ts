@@ -2,7 +2,7 @@ import { App, CfnElement } from 'aws-cdk-lib';
 import { Match, Template } from 'aws-cdk-lib/assertions';
 import * as fs from 'fs';
 import * as path from 'path';
-import { BlogStack, MICROSOFT_API_BURST, MICROSOFT_API_RATE, STATIC_CACHE } from '../lib/blog-stack';
+import { BlogStack, HEALTH_DOC, MICROSOFT_API_BURST, MICROSOFT_API_RATE, STATIC_CACHE } from '../lib/blog-stack';
 
 const env = { account: '123456789012', region: 'eu-west-1' };
 const template = Template.fromStack(new BlogStack(new App(), 'BlogSite', { env }));
@@ -77,7 +77,7 @@ test('api reads exactly its own client ID and secret plus the shared tenant ID',
 test('CloudFront routes the API, published content and media', () => {
   const [distribution] = Object.values(template.findResources('AWS::CloudFront::Distribution')) as any[];
   const config = distribution.Properties.DistributionConfig;
-  expect(config.CacheBehaviors.map((b: any) => b.PathPattern)).toEqual(['api/*', 'auth/*', 'content/*', 'media/*', '20????????']);
+  expect(config.CacheBehaviors.map((b: any) => b.PathPattern)).toEqual(['api/*', 'auth/*', 'content/*', 'media/*', '20????????', 'health']);
   expect(config.CacheBehaviors.find((b: any) => b.PathPattern === 'content/*').AllowedMethods).toEqual(['GET', 'HEAD']);
   expect(config.CustomErrorResponses).toBeUndefined();
   expect(config.Logging).toEqual({ IncludeCookies: true });
@@ -125,10 +125,10 @@ test('every edge location, HTTP/3, and a day at the edge for site files but neve
   expect(distribution.Properties.DistributionConfig.PriceClass).toBe('PriceClass_All');
   expect(distribution.Properties.DistributionConfig.HttpVersion).toBe('http2and3');
   const deployments = Object.values(template.findResources('Custom::CDKBucketDeployment')) as any[];
-  expect(deployments).toHaveLength(2);
-  const assets = deployments.find((d) => d.Properties.Exclude);
-  const pages = deployments.find((d) => d.Properties.Include);
-  expect(assets.Properties).toMatchObject({ Exclude: ['*.html'], Prune: true, DistributionPaths: ['/*'],
+  expect(deployments).toHaveLength(3);
+  const assets = deployments.find((d) => !d.Properties.Include);
+  const pages = deployments.find((d) => d.Properties.Include && d.Properties.Include[0] === '*.html');
+  expect(assets.Properties).toMatchObject({ Exclude: ['*.html', HEALTH_DOC], Prune: true, DistributionPaths: ['/*'],
     SystemMetadata: { 'cache-control': STATIC_CACHE } });
   expect(assets.Properties.Include).toBeUndefined();
   expect(STATIC_CACHE).toBe('public, max-age=300, s-maxage=86400, stale-while-revalidate=86400');
@@ -296,4 +296,43 @@ test('every log group the stack manages is kept three months (90 days)', () => {
   expect(groups.length).toBe(2);
   for (const g of groups) expect(g.Properties.RetentionInDays).toBe(90);
   expect(Object.keys(template.findResources('Custom::LogRetention'))).toEqual([]);
+});
+
+test('/health: its own CloudFront behaviour, cached 60 s, keyed on nothing and forwarding nothing to the Lambda', () => {
+  const [distribution] = Object.values(template.findResources('AWS::CloudFront::Distribution')) as any[];
+  const config = distribution.Properties.DistributionConfig;
+  const health = config.CacheBehaviors.find((b: any) => b.PathPattern === 'health');
+  const api = config.CacheBehaviors.find((b: any) => b.PathPattern === 'api/*');
+  expect(health.TargetOriginId).toBe(api.TargetOriginId);
+  expect(health.AllowedMethods).toEqual(['GET', 'HEAD']);
+  expect(health.ViewerProtocolPolicy).toBe('redirect-to-https');
+  // No origin request policy: CloudFront then forwards only the (empty) cache key: no cookies, headers or query.
+  expect(health.OriginRequestPolicyId).toBeUndefined();
+  expect(health.FunctionAssociations).toBeUndefined();
+  expect(health.ResponseHeadersPolicyId).toEqual(api.ResponseHeadersPolicyId);
+  const policies = template.findResources('AWS::CloudFront::CachePolicy');
+  const policy = policies[health.CachePolicyId.Ref].Properties.CachePolicyConfig;
+  expect(policy).toMatchObject({ MinTTL: 0, DefaultTTL: 60, MaxTTL: 60 });
+  expect(policy.ParametersInCacheKeyAndForwardedToOrigin).toMatchObject({
+    HeadersConfig: { HeaderBehavior: 'none' },
+    CookiesConfig: { CookieBehavior: 'none' },
+    QueryStringsConfig: { QueryStringBehavior: 'none' },
+  });
+});
+
+test('/health reads the published post list with one extra grant, on exactly that object', () => {
+  const statements = (Object.values(template.findResources('AWS::IAM::Policy')) as any[])
+    .flatMap((p) => p.Properties.PolicyDocument.Statement);
+  const reads = statements.filter((st) => JSON.stringify(st.Resource).includes('/content/index.json'));
+  expect(reads).toHaveLength(1);
+  expect(reads[0].Action).toBe('s3:GetObject');
+  expect(JSON.stringify(reads[0].Resource)).toContain('ContentBucket');
+});
+
+test('/docs/health.md has its own upload, served as text/markdown; charset=utf-8', () => {
+  const deployments = Object.values(template.findResources('Custom::CDKBucketDeployment')) as any[];
+  const doc = deployments.find((d) => d.Properties.Include && d.Properties.Include[0] === HEALTH_DOC);
+  expect(HEALTH_DOC).toBe('docs/health.md');
+  expect(doc.Properties).toMatchObject({ Exclude: ['*'], Include: [HEALTH_DOC], DistributionPaths: ['/docs/health.md'],
+    SystemMetadata: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': STATIC_CACHE } });
 });

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Health checks · Docs · DL blog</title>
+  <meta name="description" content="How status.dliu.com tests blog.dliu.com as a guest: what is checked, what down means, and what isn't tested">
+  <link rel="icon" href="/logo.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="https://files.dliu.com/dliu.com/ui/v1/dl.css">
+  <link rel="stylesheet" href="https://files.dliu.com/dliu.com/ui/v1/dl-docs.css">
+  <link rel="alternate" type="text/markdown" href="/docs/health.md" title="Full technical version (Markdown)">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/i18n.js" defer></script>
+  <script type="module" src="/docs-health.js"></script>
+  <script src="https://traffic.dliu.com/t/s.js" async></script>
+</head>
+<body class="dl-page">
+  <header class="dl-header">
+    <a class="dl-brand" href="/"><img class="dl-logo" src="/logo.svg" alt="" width="32" height="32"><span data-zh="DL 博客">DL blog</span></a>
+    <nav class="dl-nav" id="nav" aria-label="Site" data-zh-label="网站"></nav>
+  </header>
+  <main class="dl-main dl-docs-main">
+    <nav class="dl-tabs" aria-label="Docs sections" data-zh-label="文档章节">
+      <a href="/docs#architecture" data-zh="技术架构">Technical architecture</a>
+      <a href="/docs#cost" data-zh="运行成本">Cost</a>
+      <a href="/docs#security" data-zh="安全">Security</a>
+      <a href="/docs/api">API</a>
+      <a href="/docs/health" aria-current="page" data-zh="健康检查">Health checks</a>
+    </nav>
+    <article class="dl-docs health-doc">
+      <h2 data-zh="博客如何被检查">How the blog is checked</h2>
+      <p class="lead" data-zh="status.dliu.com 每 15 分钟像一位普通访客那样检查这个博客：不登录、不改动任何内容，只打开公开的页面和链接，再问博客自己的 /health 检查它依赖的数据库、存储和登录设置是否正常。">Every 15 minutes, status.dliu.com checks this blog the way an ordinary visitor would: it never signs in and never changes anything. It opens the public pages and links, then asks the blog’s own /health check whether the database, storage and sign-in settings it relies on are working.</p>
+
+      <figure class="dg health-diagram">
+        <figcaption data-zh="检查的过程">How a check runs</figcaption>
+        <div class="dg-flow" role="list">
+          <div class="dg-step" role="listitem" data-icon="bot"><span class="dg-text"><strong>status.dliu.com</strong><small data-zh="访客身份，每 15 分钟">As a guest, every 15 minutes</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="page"><span class="dg-text"><strong data-zh="页面和公开链接">Pages and public links</strong><small data-zh="首页、文章列表、心情、登录链接、文档">Home page, post list, reactions, sign-in link, docs</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="lambda"><span class="dg-text"><strong>/health</strong><small data-zh="博客自检，最多每分钟一次">The blog checks itself, at most once a minute</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step" role="listitem" data-icon="dynamodb"><span class="dg-text"><strong data-zh="数据库、存储、登录设置">Database, storage, sign-in settings</strong><small data-zh="每样只快速读一次">One quick read each</small></span></div>
+        </div>
+      </figure>
+      <figure class="dg health-results">
+        <figcaption data-zh="结果">Results</figcaption>
+        <div class="dg-flow" role="list">
+          <div class="dg-step dg-good" role="listitem" data-icon="check"><span class="dg-text"><strong data-zh="正常">Pass</strong><small data-zh="一切按预期工作">Everything works as expected</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-warn" role="listitem" data-icon="clock"><span class="dg-text"><strong data-zh="变慢">Warn</strong><small data-zh="变慢或失败一次：显示为“降级”">Slow, or failed once: shown as degraded</small></span></div>
+          <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
+          <div class="dg-step dg-bad" role="listitem" data-icon="power"><span class="dg-text"><strong data-zh="失败">Fail</strong><small data-zh="连续两次失败：显示为“停止服务”">Failed twice in a row: shown as down</small></span></div>
+        </div>
+      </figure>
+
+      <h3 data-zh="检查哪些功能">What is checked</h3>
+      <ul class="health-functions">
+        <li data-function="pages"><strong data-zh="页面">Pages</strong> <span data-zh="首页能打开。如果失败，读者完全打不开博客。">The home page opens. If this fails, readers can’t open the blog at all.</span></li>
+        <li data-function="posts"><strong data-zh="文章">Posts</strong> <span data-zh="已发布文章的列表能读取，保存文章的数据库能访问。如果失败，读者看不到文章，博主也无法保存。">The list of published posts loads, and the database posts are saved in answers. If this fails, readers see no posts and the owner can’t save.</span></li>
+        <li data-function="storage"><strong data-zh="已发布内容的存储">Published content storage</strong> <span data-zh="存放已发布文章、图片和文件的存储能访问。如果失败，文章、图片和文件都打不开。">The storage that holds published posts, pictures and files answers. If this fails, posts, pictures and files don’t open.</span></li>
+        <li data-function="reactions"><strong data-zh="心情">Reactions</strong> <span data-zh="文章下方的心情计数能读取。如果失败，读者看不到也无法留下心情，但文章照常可读。">The reaction counts under each post load. If this fails, readers can’t see or leave reactions, but posts still read fine.</span></li>
+        <li data-function="api"><strong data-zh="博客 API">Blog API</strong> <span data-zh="网站背后的小程序能响应。如果失败，心情、登录和写作都不可用。">The small program behind the site answers. If this fails, reactions, sign-in and writing stop working.</span></li>
+        <li data-function="signin"><strong data-zh="Microsoft 登录">Microsoft sign-in</strong> <span data-zh="登录按钮能把人带到 Microsoft，登录设置能读取。如果失败，博主无法登录写作；读者不受影响。">The Sign in button leads to Microsoft and the sign-in settings can be read. If this fails, the owner can’t sign in to write; readers aren’t affected.</span></li>
+        <li data-function="docs"><strong data-zh="文档">Docs</strong> <span data-zh="这些文档页面能打开。如果失败，只是说明文档看不到。">These documentation pages open. If this fails, only the documentation is missing.</span></li>
+      </ul>
+
+      <details class="dg-more">
+        <summary data-zh="技术细节：访客检查">Technical details: guest checks</summary>
+        <div>
+          <p>Anonymous <code>GET</code> only: no cookies, no <code>Authorization</code>, no query string, redirects not followed. User agent <code>dliu-status-bot/1.0 (+https://status.dliu.com/docs)</code>.</p>
+          <ul class="health-checks">
+            <li data-check="pages"><code>pages</code>: <code>GET https://blog.dliu.com/</code> → <code>200</code> <code>text/html</code>, contains <code>dl-footer</code>; slow after 2000 ms.</li>
+            <li data-check="posts"><code>posts</code>: <code>GET https://blog.dliu.com/content/index.json</code> → <code>200</code> <code>application/json</code>, JSON key <code>posts</code>; slow after 2000 ms.</li>
+            <li data-check="reactions"><code>reactions</code>: <code>GET https://blog.dliu.com/api/reactions/2026103100</code> → <code>200</code> <code>application/json</code>, JSON key <code>counts</code>; slow after 3000 ms. Read only; never <code>POST</code>.</li>
+            <li data-check="api"><code>api</code>: <code>GET https://blog.dliu.com/api/me</code> → <code>200</code> <code>application/json</code>, JSON key <code>signedIn</code> (value <code>false</code>); slow after 3000 ms.</li>
+            <li data-check="signin"><code>signin</code>: <code>GET https://blog.dliu.com/auth/login</code> → <code>302</code>, <code>Location</code> starts with <code>https://login.microsoftonline.com/</code>; slow after 3000 ms.</li>
+            <li data-check="docs"><code>docs</code>: <code>GET https://blog.dliu.com/docs</code> → <code>200</code> <code>text/html</code>, contains <code>dl-tabs</code>; slow after 2000 ms.</li>
+          </ul>
+        </div>
+      </details>
+      <details class="dg-more">
+        <summary data-zh="技术细节：/health">Technical details: /health</summary>
+        <div>
+          <p><code>GET https://blog.dliu.com/health</code> (or <code>HEAD</code>), no authentication. CloudFront forwards no cookies, no <code>Authorization</code> header and no query string, and caches the answer for 60 s (<code>Cache-Control: public, max-age=60</code>, cache key empty). <code>/health/</code> redirects to <code>/health</code>.</p>
+          <p><code>Content-Type: application/health+json</code>; HTTP <code>200</code> for <code>pass</code> or <code>warn</code>, <code>503</code> for <code>fail</code>. Checks run in parallel, each with a 2 s timeout; over 1 s is <code>warn</code> (<code>slow</code>); a failure is <code>fail</code> (<code>timeout</code> or <code>read failed</code>). The top-level <code>status</code> is the worst. No writes, no S3 LIST, no Microsoft calls; no names, counts or traces in the answer.</p>
+          <ul class="health-endpoint">
+            <li data-health="posts"><code>posts</code> (Posts): DynamoDB <code>GetItem</code> of a fixed key on the posts table.</li>
+            <li data-health="reactions"><code>reactions</code> (Reactions): DynamoDB <code>GetItem</code> of a fixed key on the reactions table.</li>
+            <li data-health="storage"><code>storage</code> (Published content storage): S3 <code>HeadObject</code> of <code>content/index.json</code>.</li>
+            <li data-health="signin"><code>signin</code> (Microsoft sign-in): the SSM Parameter Store read sign-in already does (cached 5 minutes); no call to Microsoft.</li>
+          </ul>
+          <pre class="code">{
+  "status": "pass",
+  "time": "2026-11-04T09:00:00Z",
+  "functions": [
+    { "key": "posts", "name": "Posts", "status": "pass" },
+    { "key": "reactions", "name": "Reactions", "status": "pass" },
+    { "key": "storage", "name": "Published content storage", "status": "pass" },
+    { "key": "signin", "name": "Microsoft sign-in", "status": "warn", "output": "slow" }
+  ]
+}</pre>
+        </div>
+      </details>
+
+      <h3 data-zh="哪些没有被检查">What isn’t tested</h3>
+      <p data-zh="访客无法检查需要博主登录或会改动内容的事情：">A guest can’t check anything that needs the owner to sign in or that changes content:</p>
+      <ul>
+        <li data-zh="登录本身（需要博主的 Microsoft 账户）以及登录后的会话。">Signing in itself (it needs the owner’s Microsoft account), and being signed in.</li>
+        <li data-zh="写作、编辑、发布、取消发布和删除文章。">Writing, editing, publishing, unpublishing and deleting posts.</li>
+        <li data-zh="给文章上传或删除图片和文件。">Uploading pictures and files to a post, or deleting them.</li>
+        <li data-zh="供 AI 助手使用的 Microsoft API（需要 Microsoft 访问令牌）。">The Microsoft API for AI agents (it needs a Microsoft access token).</li>
+        <li data-zh="留下心情（这是一次写入）以及它的频率限制。">Leaving a reaction (that is a write), and its rate limit.</li>
+        <li data-zh="博主删除或更换图片后，CloudFront 缓存的清除。">Clearing CloudFront’s copy after the owner deletes or replaces a picture.</li>
+        <li data-zh="某一篇文章的链接预览（文章可能被取消发布或删除）。">The link preview of a particular post (posts can be unpublished or deleted).</li>
+      </ul>
+      <details class="dg-more">
+        <summary data-zh="技术细节：规则">Technical details: rules</summary>
+        <div>
+          <ul>
+            <li>The tests are read only and must never change content: <code>GET</code> and <code>HEAD</code> only, never <code>POST</code>, <code>PUT</code> or <code>DELETE</code>.</li>
+            <li>No cookies, no <code>Authorization</code> header and no credentials of any kind.</li>
+            <li>At most one run every 15 minutes (plus one retry of a failed check).</li>
+          </ul>
+        </div>
+      </details>
+
+      <p><a href="/docs/health.md" data-zh="完整技术版本（Markdown）">Full technical version (Markdown)</a></p>
+    </article>
+  </main>
+  <footer class="dl-footer">
+    <a class="dl-footer-logo" href="https://dliu.com" aria-label="dliu.com"><img src="https://files.dliu.com/dliu.com/favicon.png" alt="" width="24" height="24"></a>
+    <a href="https://dliu.com">dliu.com</a> · <a href="/" data-zh="DL 博客">DL blog</a>
+  </footer>
+</body>
+</html>

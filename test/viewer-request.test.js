@@ -37,6 +37,15 @@ test('/docs/api is the API guide; /docs/api.md is served as a file', () => {
   expect(run('/docs/api.md').uri).toBe('/docs/api.md');
 });
 
+test('/docs/health is the health checks page; /docs/health.md is a file; /health is never redirected home', () => {
+  expect(run('/docs/health').uri).toBe('/docs-health.html');
+  expect(run('/docs/health/').uri).toBe('/docs-health.html');
+  expect(run('/docs/health.md').uri).toBe('/docs/health.md');
+  // /health has its own CloudFront behaviour; should the default one ever see it, it is not sent to the home page.
+  expect(run('/health').uri).toBe('/health');
+  expect(run('/health/')).toMatchObject({ statusCode: 301, headers: { location: { value: '/health' } } });
+});
+
 test('Authorization is no longer turned into a blog token header', () => {
   const bearer = { authorization: { value: 'Bearer synthetic' } };
   for (const uri of ['/api/posts', '/api/me', '/auth/login']) expect(run(uri, bearer).headers['x-blog-token']).toBeUndefined();

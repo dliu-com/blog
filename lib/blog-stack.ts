@@ -43,6 +43,7 @@ export const VIEWER_REQUEST_CODE = fs.readFileSync(path.join(ROOT, 'functions/vi
 // The agent-readable API guide names the managed API origin; the deployed copy gets the real MicrosoftApiUrl.
 export const API_DOC = 'docs/api.md';
 export const API_URL_PLACEHOLDER = '{{MICROSOFT_API_URL}}';
+export const HEALTH_DOC = 'docs/health.md';
 // Site files other than the HTML shells. Every deploy invalidates them at CloudFront.
 export const STATIC_CACHE = 'public, max-age=300, s-maxage=86400, stale-while-revalidate=86400';
 // Requests per second (and burst) for the whole Microsoft API stage; scripts and agents need far less.
@@ -158,6 +159,10 @@ export class BlogStack extends Stack {
     apiHandler.addToRolePolicy(new iam.PolicyStatement({
       actions: ['s3:GetObject'], // HeadObject of a finished upload, and the source of the copy into media/
       resources: contentKeys('pending/'),
+    }));
+    apiHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject'], // /health: HeadObject of the published post list, nothing else
+      resources: [contentBucket.arnForObjects('content/index.json')],
     }));
     apiHandler.addToRolePolicy(new iam.PolicyStatement({
       actions: ['s3:PutObject', 's3:DeleteObject'], // presigned uploads, media copies, content JSON
@@ -347,6 +352,25 @@ export class BlogStack extends Stack {
       functionAssociations,
     };
 
+    // /health for status.dliu.com: keyed on nothing and forwarding nothing (no origin request policy, so no
+    // cookies, no Authorization and no query string reach the Lambda), cached for the Lambda's max-age=60.
+    const healthCache = new cloudfront.CachePolicy(this, 'HealthCache', {
+      comment: 'blog.dliu.com /health, one copy for everyone',
+      minTtl: Duration.seconds(0),
+      defaultTtl: Duration.seconds(60),
+      maxTtl: Duration.seconds(60),
+      headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+      cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
+    });
+    const healthBehavior: cloudfront.BehaviorOptions = {
+      origin: apiOrigin,
+      allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
+      viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+      cachePolicy: healthCache,
+      responseHeadersPolicy: headers,
+    };
+
     const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       comment: 'blog.dliu.com',
       defaultBehavior: {
@@ -365,6 +389,7 @@ export class BlogStack extends Stack {
         'content/*': contentBehavior,
         'media/*': contentBehavior,
         '20????????': postPageBehavior,
+        'health': healthBehavior,
       },
       domainNames: [domainName],
       certificate,
@@ -394,6 +419,7 @@ export class BlogStack extends Stack {
     // Scripts, styles, images and docs/api.md: CloudFront keeps them a day (a deploy invalidates them),
     // browsers five minutes.
     const webAsset = s3deploy.Source.asset(path.join(ROOT, 'web'), { exclude: [API_DOC] });
+    // docs/health.md has its own upload so it is served as text/markdown; charset=utf-8.
     const assets = new s3deploy.BucketDeployment(this, 'SiteContent', {
       sources: [
         webAsset,
@@ -401,7 +427,7 @@ export class BlogStack extends Stack {
           .split(API_URL_PLACEHOLDER).join(microsoftApiUrl ?? '(the Microsoft API is not deployed)')),
       ],
       destinationBucket: siteBucket,
-      exclude: ['*.html'],
+      exclude: ['*.html', HEALTH_DOC],
       distribution,
       distributionPaths: ['/*'],
       cacheControl: [s3deploy.CacheControl.fromString(STATIC_CACHE)],
@@ -418,6 +444,16 @@ export class BlogStack extends Stack {
       cacheControl: [s3deploy.CacheControl.noCache()],
     });
     pages.node.addDependency(assets);
+    new s3deploy.BucketDeployment(this, 'HealthDoc', {
+      sources: [webAsset],
+      destinationBucket: siteBucket,
+      exclude: ['*'],
+      include: [HEALTH_DOC],
+      distribution,
+      distributionPaths: [`/${HEALTH_DOC}`],
+      contentType: 'text/markdown; charset=utf-8',
+      cacheControl: [s3deploy.CacheControl.fromString(STATIC_CACHE)],
+    });
 
     // ---------- Automatic clearing of post media ----------
     // media/ is cached at CloudFront for a day. The app never overwrites a media key (a replaced file gets

@@ -23,7 +23,7 @@ test('the API origin is filled in at deploy time, never hard-coded', () => {
 });
 
 test('no retired blog token instructions remain in the site', () => {
-  const files = ['docs/api.md', 'docs-api.html', 'docs.html', 'index.html', 'app.js', 'docs.js', 'docs-api.js', 'i18n.js'];
+  const files = ['docs/api.md', 'docs/health.md', 'docs-api.html', 'docs-health.html', 'docs.html', 'index.html', 'app.js', 'docs.js', 'docs-api.js', 'docs-health.js', 'i18n.js'];
   for (const file of files) {
     const text = fs.readFileSync(path.join(WEB, file), 'utf8');
     for (const retired of ['/api/tokens', 'x-blog-token', 'dliu_credentials', 'blog_0123', 'Generate token', 'Copy command']) {
@@ -52,7 +52,7 @@ test('only signed-in authors get the who-reacted list, linked to the traffic mon
 });
 
 test('every page loads the traffic monitor\'s page script with one plain async tag', () => {
-  for (const file of ['index.html', 'docs.html', 'docs-api.html']) {
+  for (const file of ['index.html', 'docs.html', 'docs-api.html', 'docs-health.html']) {
     const text = fs.readFileSync(path.join(WEB, file), 'utf8');
     expect([file, text.split('traffic.dliu.com').length - 1]).toEqual([file, 1]);
     expect([file, text.includes('<script src="https://traffic.dliu.com/t/s.js" async></script>')]).toEqual([file, true]);
@@ -62,6 +62,7 @@ test('every page loads the traffic monitor\'s page script with one plain async t
   }
   expect(fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8')).toContain("from './docs-nav.js'");
   expect(fs.readFileSync(path.join(WEB, 'docs-api.js'), 'utf8')).toContain("from './docs-nav.js'");
+  expect(fs.readFileSync(path.join(WEB, 'docs-health.js'), 'utf8')).toContain("from './docs-nav.js'");
 });
 
 test('the Security tab lists the live penetration test before the threat model, with expected and actual results', () => {

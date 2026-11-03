@@ -88,10 +88,11 @@ Every route also needs the Microsoft-assigned user role **dliu API user** (`api.
 ```
 web/            frontend (vanilla JS, no build step): index.html, app.js, i18n.js (Chinese/English), markdown.js, style.css,
                 docs.html, docs.js, diagram.js (the /docs page; shared dl.css + dl-docs.css),
-                docs-api.html, docs-api.js, docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy)
+                docs-api.html, docs-api.js, docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy),
+                docs-health.html, docs-health.js, docs/health.md (how status.dliu.com tests the site)
 lambda/invalidate/ clears deleted or changed media from CloudFront (S3 event -> SQS -> this function)
 lambda/api/     authoring API: routes (index.js), managed API routes and checks (routes.json, api-access.js), posts,
-                S3 signing, DynamoDB store, Entra auth, config
+                S3 signing, DynamoDB store, Entra auth, config, /health (health.js)
 functions/      CloudFront viewer-request function (routing + old-link redirects)
 lib/, bin/      AWS CDK stack (BlogSite)
 scripts/        dev server with in-memory store, set-secrets.sh, api-client.js (managed API client)
@@ -179,6 +180,8 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 | `/admin` | All posts and drafts (signed in) |
 | `/docs` | Architecture, cost and security |
 | `/docs/api`, `/docs/api.md` | API guide for agents (page and Markdown) |
+| `/docs/health`, `/docs/health.md` | How status.dliu.com tests the site (page for people, Markdown for machines) |
+| `/health` | Health check for status.dliu.com (`application/health+json`). `/health/` redirects to it. |
 | `/posts/<postId>` | `/<postId>` (301) |
 | `/2025/04/` | `/?m=202504` (301) |
 | `/<old-wordpress-slug>/`, `/page/2/` | `/` (301) |
@@ -199,6 +202,15 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 - **Managed API throttling:** the HTTP API stage allows 10 requests a second, bursts of 20. The JWT authorizer refuses bad tokens with 401 before throttling counts them.
 - **Live penetration test:** `node scripts/pentest.mjs` runs every live check against production without credentials and changes no data. Set `SKIP_RATE=1` to skip the reaction rate test (60 an hour per IP); `CHECK_AWS=1` also reads the stage throttle with the AWS CLI. Results are in the docs Security tab.
 - **Secret and dependency scans:** `gitleaks detect --log-opts="--all"` (known test fixtures are listed in `.gitleaksignore`), `npm audit --omit=dev` and `npm audit`.
+
+## Health checks (status.dliu.com)
+
+The site follows the dliu.com health contract (`status/HEALTH.md`): status.dliu.com checks it every 15 minutes as an anonymous guest.
+
+- `/docs/health` explains the checks for people: a diagram, one plain line per function, and what isn't tested, with every technical detail in closed `<details>` blocks. `/docs/health.md` is the full technical version for machines (functions, guest checks table, `/health`, not tested, rules), uploaded by its own `HealthDoc` deployment as `text/markdown; charset=utf-8`.
+- `GET /health` reports `posts` (DynamoDB `GetItem` of a fixed key on the posts table), `reactions` (`GetItem` on the reactions table), `storage` (S3 `HeadObject` of `content/index.json`; the only extra IAM grant is `s3:GetObject` on exactly that object) and `signin` (the SSM settings read sign-in already does, cached 5 minutes; no call to Microsoft). Checks run in parallel with a 2 s timeout each; over 1 s is `warn` (`slow`), a failure is `fail` (`timeout` or `read failed`). It answers `200` for `pass`/`warn` and `503` for `fail`, and names no tables, buckets or functions.
+- The `health` CloudFront behaviour sends it to the API Lambda with a cache policy keyed on nothing (60 s, the Lambda's `max-age=60`) and no origin request policy, so no cookies, `Authorization` header or query string reach the Lambda; the handler reads none of them either. No viewer function runs on it.
+- `test/health.test.js` fails if the page, the Markdown file or the endpoint disappears, if `/health` reads the request, if the diagram is lost or details are unfolded, or if the function keys drift between the page, the Markdown file and the endpoint. `test/stack.test.ts` checks the behaviour, the cache policy, the grant and the Markdown content type.
 
 ## Traffic monitoring
 
