@@ -1,6 +1,6 @@
 # How to test blog.dliu.com
 
-This is the full technical version of https://blog.dliu.com/docs/health, for machines and AI agents. It follows the
+This is the full technical version of https://blog.dliu.com/docs#health (the Testing tab), for machines and AI agents. It follows the
 dliu.com health contract: an anonymous guest (status.dliu.com) checks that the blog works, without signing in and
 without AWS access. This is separate from the managed API in https://blog.dliu.com/docs/api.md, which is for signed-in
 users changing content; the two share no routes and no credentials.
@@ -15,7 +15,7 @@ users changing content; the two share no routes and no credentials.
 | `reactions` | Reactions | Readers' reactions (love, like…) on each post, kept in a DynamoDB table; no sign-in. | no |
 | `api` | Blog API | The website's API Lambda (`/api/*`): sign-in state, reactions, and the owner's editing. | yes |
 | `signin` | Microsoft sign-in | The owner signs in with Microsoft Entra ID (`/auth/login`), using settings read from SSM Parameter Store. | no |
-| `docs` | Docs | The documentation pages (`/docs`, `/docs/api`, `/docs/health`). | no |
+| `docs` | Docs | The documentation pages (`/docs`, `/docs/api`; `/docs/health` redirects to `/docs#health`). | no |
 
 The site is "down" when a critical function fails.
 

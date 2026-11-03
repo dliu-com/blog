@@ -89,7 +89,7 @@ Every route also needs the Microsoft-assigned user role **dliu API user** (`api.
 web/            frontend (vanilla JS, no build step): index.html, app.js, i18n.js (Chinese/English), markdown.js, style.css,
                 docs.html, docs.js, diagram.js (the /docs page; shared dl.css + dl-docs.css),
                 docs-api.html, docs-api.js, docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy),
-                docs-health.html, docs-health.js, docs/health.md (how status.dliu.com tests the site)
+                docs/health.md (how status.dliu.com tests the site; the page is docs.html's Testing tab)
 lambda/invalidate/ clears deleted or changed media from CloudFront (S3 event -> SQS -> this function)
 lambda/api/     authoring API: routes (index.js), managed API routes and checks (routes.json, api-access.js), posts,
                 S3 signing, DynamoDB store, Entra auth, config, /health (health.js)
@@ -178,9 +178,9 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 | `/` | List of posts. `/?s=word` searches titles and excerpts; `/?m=202510` shows one month. |
 | `/<postId>` | The post, e.g. `/2026102701`. `/<postId>/` redirects to it. |
 | `/admin` | All posts and drafts (signed in) |
-| `/docs` | Architecture, cost and security |
+| `/docs` | Architecture, cost, security and testing (tabs) |
 | `/docs/api`, `/docs/api.md` | API guide for agents (page and Markdown) |
-| `/docs/health`, `/docs/health.md` | How status.dliu.com tests the site (page for people, Markdown for machines) |
+| `/docs#health`, `/docs/health.md` | How status.dliu.com tests the site (the Testing tab for people, Markdown for machines); `/docs/health` → 301 `/docs#health` |
 | `/health` | Health check for status.dliu.com (`application/health+json`). `/health/` redirects to it. |
 | `/posts/<postId>` | `/<postId>` (301) |
 | `/2025/04/` | `/?m=202504` (301) |
@@ -207,7 +207,7 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 
 The site follows the dliu.com health contract (`status/HEALTH.md`): status.dliu.com checks it every 15 minutes as an anonymous guest.
 
-- `/docs/health` explains the checks for people: a diagram, one plain line per function, and what isn't tested, with every technical detail in closed `<details>` blocks. `/docs/health.md` is the full technical version for machines (functions, guest checks table, `/health`, not tested, rules), uploaded by its own `HealthDoc` deployment as `text/markdown; charset=utf-8`.
+- The Testing tab, `/docs#health` (static HTML in `docs.html`; the old `/docs/health` answers 301 to it), explains the checks for people: a diagram, one plain line per function, and what isn't tested, with every technical detail in closed `<details>` blocks. `/docs/health.md` is the full technical version for machines (functions, guest checks table, `/health`, not tested, rules), uploaded by its own `HealthDoc` deployment as `text/markdown; charset=utf-8`.
 - `GET /health` reports `posts` (DynamoDB `GetItem` of a fixed key on the posts table), `reactions` (`GetItem` on the reactions table), `storage` (S3 `HeadObject` of `content/index.json`; the only extra IAM grant is `s3:GetObject` on exactly that object) and `signin` (the SSM settings read sign-in already does, cached 5 minutes; no call to Microsoft). Checks run in parallel with a 2 s timeout each; over 1 s is `warn` (`slow`), a failure is `fail` (`timeout` or `read failed`). It answers `200` for `pass`/`warn` and `503` for `fail`, and names no tables, buckets or functions.
 - The `health` CloudFront behaviour sends it to the API Lambda with a cache policy keyed on nothing (60 s, the Lambda's `max-age=60`) and no origin request policy, so no cookies, `Authorization` header or query string reach the Lambda; the handler reads none of them either. No viewer function runs on it.
 - `test/health.test.js` fails if the page, the Markdown file or the endpoint disappears, if `/health` reads the request, if the diagram is lost or details are unfolded, or if the function keys drift between the page, the Markdown file and the endpoint. `test/stack.test.ts` checks the behaviour, the cache policy, the grant and the Markdown content type.

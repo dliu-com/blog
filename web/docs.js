@@ -1,12 +1,13 @@
-import { flow, tiers, stats, table, callout, more } from './diagram.js';
+import { flow, tiers, stats, table, callout, more, icon } from './diagram.js';
 import { renderNav } from './docs-nav.js';
 
 const { t } = window.BlogI18n;
-const TABS = ['architecture', 'cost', 'security'];
+const TABS = ['architecture', 'cost', 'security', 'health'];
 const TITLES = {
   architecture: () => t('技术架构', 'Technical architecture'),
   cost: () => t('运行成本', 'Cost'),
   security: () => t('安全', 'Security'),
+  health: () => t('测试', 'Testing'),
 };
 const num = (text) => ({ text, className: 'num' });
 const mono = (text) => ({ text, className: 'mono' });
@@ -498,8 +499,16 @@ function security(root) {
   source(root, t('源码：dliu-com/blog（lambda/api/auth.js、lambda/api/index.js、lambda/api/api-access.js、lambda/api/routes.json、lambda/api/reactions.js、lambda/api/s3.js、functions/viewer-request.js、web/markdown.js、lib/blog-stack.ts、scripts/pentest.mjs）。', 'Source: dliu-com/blog (lambda/api/auth.js, lambda/api/index.js, lambda/api/api-access.js, lambda/api/routes.json, lambda/api/reactions.js, lambda/api/s3.js, functions/viewer-request.js, web/markdown.js, lib/blog-stack.ts, scripts/pentest.mjs).'));
 }
 
+// The Testing tab is static HTML in docs.html (data-zh holds the Chinese, so /docs/health.md can be checked against
+// it); this only adds the diagram icons, once.
+function health(root) {
+  for (const step of root.querySelectorAll('.dg-step[data-icon]')) {
+    if (!step.querySelector(':scope > .dg-icon')) step.prepend(icon(step.dataset.icon));
+  }
+}
+
 // Each article starts with its heading and lead from docs.html (translated by i18n.js); the rest is drawn here.
-const PAGES = { architecture, cost, security };
+const PAGES = { architecture, cost, security, health };
 const kept = Object.fromEntries(TABS.map((id) => [id, document.getElementById(id).children.length]));
 function draw() {
   renderNav();

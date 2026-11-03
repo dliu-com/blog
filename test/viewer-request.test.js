@@ -37,9 +37,10 @@ test('/docs/api is the API guide; /docs/api.md is served as a file', () => {
   expect(run('/docs/api.md').uri).toBe('/docs/api.md');
 });
 
-test('/docs/health is the health checks page; /docs/health.md is a file; /health is never redirected home', () => {
-  expect(run('/docs/health').uri).toBe('/docs-health.html');
-  expect(run('/docs/health/').uri).toBe('/docs-health.html');
+test('/docs/health redirects to the Testing tab, /docs#health; /docs/health.md is a file; /health is never redirected home', () => {
+  for (const uri of ['/docs/health', '/docs/health/']) {
+    expect(run(uri)).toMatchObject({ statusCode: 301, headers: { location: { value: '/docs#health' } } });
+  }
   expect(run('/docs/health.md').uri).toBe('/docs/health.md');
   // /health has its own CloudFront behaviour; should the default one ever see it, it is not sent to the home page.
   expect(run('/health').uri).toBe('/health');

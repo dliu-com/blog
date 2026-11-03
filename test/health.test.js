@@ -1,6 +1,7 @@
 'use strict';
 
-// The dliu.com health contract (status.dliu.com): GET /health, /docs/health (people) and /docs/health.md (machines).
+// The dliu.com health contract (status.dliu.com): GET /health, the Testing tab /docs#health (people) and
+// /docs/health.md (machines).
 const fs = require('node:fs');
 const path = require('node:path');
 const { createHandler } = require('../lambda/api/index');
@@ -8,7 +9,9 @@ const health = require('../lambda/api/health');
 
 const ROOT = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
-const page = read('web/docs-health.html');
+const docsHtml = read('web/docs.html');
+// The Testing tab: <article id="health"> in docs.html.
+const page = docsHtml.slice(docsHtml.indexOf('<article id="health"'), docsHtml.indexOf('</article>', docsHtml.indexOf('<article id="health"')) + '</article>'.length);
 const markdown = read('web/docs/health.md');
 const KEYS = health.FUNCTIONS.map((f) => f.key);
 
@@ -108,10 +111,18 @@ describe('GET /health', () => {
   });
 });
 
-describe('/docs/health and /docs/health.md', () => {
-  test('both exist, and the page links the Markdown file as the full technical version', () => {
+describe('/docs#health and /docs/health.md', () => {
+  test('both exist: a Testing tab on /docs, which links the Markdown file as the full technical version', () => {
+    expect(page).toMatch(/^<article id="health" class="dl-docs health-doc" hidden>/);
+    expect(docsHtml).toContain('<a href="#health" data-tab="health" data-zh="测试">Testing</a>');
+    expect(read('web/docs.js')).toContain("const TABS = ['architecture', 'cost', 'security', 'health'];");
+    expect(read('web/docs-api.html')).toContain('<a href="/docs#health" data-zh="测试">Testing</a>');
+    expect(fs.existsSync(path.join(ROOT, 'web/docs-health.html'))).toBe(false);
+    // docs.js redraws every tab on a language change; the diagram icons (span.dg-icon) are added only once.
+    expect(read('web/docs.js')).toContain("if (!step.querySelector(':scope > .dg-icon')) step.prepend(icon(step.dataset.icon));");
+    expect(read('web/diagram.js')).toMatch(/className = 'dg-icon'|class="dg-icon"|'dg-icon'/);
     expect(page).toContain('<a href="/docs/health.md" data-zh="完整技术版本（Markdown）">Full technical version (Markdown)</a>');
-    expect(page).toContain('<link rel="alternate" type="text/markdown" href="/docs/health.md"');
+    expect(docsHtml).toContain('<link rel="alternate" type="text/markdown" href="/docs/health.md"');
     expect(markdown).toMatch(/^# How to test blog\.dliu\.com\n/);
     for (const title of ['Functions', 'Guest checks', 'Health endpoint', 'Not tested', 'Rules']) expect(section(title)).not.toBe('');
   });

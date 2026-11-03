@@ -1,6 +1,6 @@
 'use strict';
 
-// GET /health for status.dliu.com (see /docs/health): one cheap read per dependency, no writes, no LIST, no
+// GET /health for status.dliu.com (see /docs#health): one cheap read per dependency, no writes, no LIST, no
 // third-party calls. It takes nothing from the request (CloudFront forwards no cookies, headers or query string
 // on /health), and the response names no tables, buckets or functions: only a function key, a status and a
 // generic reason.
@@ -10,7 +10,7 @@ const SLOW_MS = 1000;
 const HEALTH_POST_ID = 'health-check'; // never a real post ID (those are yyyymmddNN)
 const CONTENT_INDEX = 'content/index.json';
 
-// Key and name of every function /health reports; /docs/health and /docs/health.md list the same keys.
+// Key and name of every function /health reports; /docs#health and /docs/health.md list the same keys.
 const FUNCTIONS = [
   { key: 'posts', name: 'Posts' },
   { key: 'reactions', name: 'Reactions' },

@@ -4,8 +4,8 @@
 // - For /<postId> the ID goes in x-blog-post: the post-page behaviour asks the API Lambda for index.html
 //   with the post's link-preview tags (falling back to the plain file), and caches per ID.
 //   /<postId>/ redirects to /<postId>. A viewer can't send its own x-blog-post.
-// - /docs/api is docs-api.html (the API guide for people; agents read /docs/api.md), and /docs/health is
-//   docs-health.html (how status.dliu.com tests the site; machines read /docs/health.md).
+// - /docs/api is docs-api.html (the API guide for people; agents read /docs/api.md). How status.dliu.com tests
+//   the site is the Testing tab, /docs#health (machines read /docs/health.md); the old /docs/health redirects there.
 // - /health has its own behaviour (no function); /health/ redirects to it.
 // - On /api/* and /auth/*, the viewer's IP goes in x-blog-viewer (replacing any sent) for the reactions
 //   rate limit.
@@ -52,10 +52,7 @@ function handler(event) {
     request.uri = '/docs-api.html';
     return request;
   }
-  if (uri === '/docs/health' || uri === '/docs/health/') {
-    request.uri = '/docs-health.html';
-    return request;
-  }
+  if (uri === '/docs/health' || uri === '/docs/health/') return redirect('/docs#health', 301);
   if (uri === '/health/') return redirect('/health', 301);
   match = /^\/posts\/(\d{10})\/?$/.exec(uri);
   if (match) return redirect('/' + match[1], 301);
