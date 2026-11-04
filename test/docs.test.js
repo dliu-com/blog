@@ -72,6 +72,13 @@ test('the API and Health tabs have tier diagrams in the Architecture style, with
   expect(html).toMatch(/<article id="api"[^>]*>\s*<h2 [^>]*>[^<]+<\/h2>\s*<p class="agent-note machine-link"><span data-zh="机器可读版本：">Machine-readable version: <\/span><a href="\/docs\/api\.md">\/docs\/api\.md<\/a><\/p>/);
 });
 
+test('the Architecture tab starts with a link to the source code on GitHub (shared dl-docs-repo)', () => {
+  const html = fs.readFileSync(path.join(WEB, 'docs.html'), 'utf8');
+  const article = html.match(/<article id="architecture" class="dl-docs">\s*([\s\S]*?)<\/article>/)[1];
+  expect(article.startsWith('<p class="dl-docs-repo"><span data-zh="源代码：">Source code:</span> <a href="https://github.com/dliu-com/blog">github.com/dliu-com/blog</a></p>')).toBe(true);
+  expect(html).toContain('https://files.dliu.com/dliu.com/ui/v1/dl-docs.css');
+});
+
 test('the first tab is called Architecture, with its #architecture anchor kept', () => {
   const html = fs.readFileSync(path.join(WEB, 'docs.html'), 'utf8');
   expect(html).toContain('<a href="#architecture" data-tab="architecture" data-zh="架构">Architecture</a>');
