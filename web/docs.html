@@ -43,8 +43,8 @@
     </article>
     <article id="api" class="dl-docs api-doc" hidden>
       <h2 data-zh="写作 API">The writing API</h2>
+      <p class="agent-note machine-link"><span data-zh="机器可读版本：">Machine-readable version: </span><a href="/docs/api.md">/docs/api.md</a></p>
       <p class="lead" data-zh="博主可以让受信任的 AI 助手或脚本代为写文章。它们使用单独的 Microsoft API，带着博主用 Microsoft 登录后得到的短期访问令牌。读者从不使用这个 API。">The owner can let a trusted AI agent or script write posts for them. It uses a separate Microsoft API, with a short-lived access token the owner gets by signing in with Microsoft. Readers never use this API.</p>
-      <p class="agent-note" data-zh="AI 助手：请阅读面向机器的技术版本 /docs/api.md。">AI agents: read the technical version for machines, /docs/api.md.</p>
 
       <div class="dg-stats">
         <div class="dg-stat" data-icon="code"><span class="dg-text"><strong>9</strong><small data-zh="个端点：文章和文件">endpoints: posts and files</small></span></div>
@@ -54,6 +54,35 @@
         <div class="dg-stat" data-icon="upload"><span class="dg-text"><strong>100 MB</strong><small data-zh="每个文件，每篇文章最多 100 个">per file, up to 100 a post</small></span></div>
         <div class="dg-stat" data-icon="pen"><span class="dg-text"><strong>100</strong><small data-zh="篇新文章每天">new posts a day</small></span></div>
       </div>
+
+      <figure class="dg dg-tiers api-tiers">
+        <figcaption data-zh="请求如何到达博客">How a request reaches the blog</figcaption>
+        <div class="dg-tier dg-untrusted"><div class="dg-tier-label"><span class="dg-badge" data-zh="调用者">Caller</span><strong data-zh="助手">Agents</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="bot"><span class="dg-text"><strong data-zh="AI 助手">AI agent</strong><small data-zh="或脚本，带着博主的 Microsoft 访问令牌">Or a script, with the owner’s Microsoft access token</small></span></div>
+            <div class="dg-node" data-icon="entra"><span class="dg-text"><strong data-zh="Microsoft Entra ID">Microsoft Entra ID</strong><small data-zh="在 auth.dliu.com 为博主签发令牌">Issues the owner’s token at auth.dliu.com</small></span></div>
+          </div>
+        </div>
+        <div class="dg-link"><span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span><span data-zh="HTTPS，Microsoft 访问令牌">HTTPS, Microsoft access token</span></div>
+        <div class="dg-tier dg-edge"><div class="dg-tier-label"><span class="dg-badge" data-zh="网关">Gateway</span><strong data-zh="Microsoft API">Microsoft API</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="shield"><span class="dg-text"><strong data-zh="API Gateway">API Gateway</strong><small data-zh="先检查令牌和该端点所需的权限，再调用 Lambda；无效的令牌到不了博客">Checks the token and the endpoint’s permission before calling the Lambda; a bad token never reaches the blog</small></span></div>
+          </div>
+        </div>
+        <div class="dg-link"><span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span><span data-zh="只有检查通过的请求">Only checked requests</span></div>
+        <div class="dg-tier dg-app"><div class="dg-tier-label"><span class="dg-badge" data-zh="按需运行">On demand</span><strong data-zh="作者 API">Author API</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="lambda"><span class="dg-text"><strong data-zh="API Lambda">API Lambda</strong><small data-zh="再次检查组织、应用和角色，然后读写文章；只在被调用时运行">Checks the organisation, app and role again, then reads or writes posts; runs only when called</small></span></div>
+          </div>
+        </div>
+        <div class="dg-link"><span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span><span data-zh="只访问博客自己的数据">The blog’s own data only</span></div>
+        <div class="dg-tier dg-private"><div class="dg-tier-label"><span class="dg-badge" data-zh="存储">Storage</span><strong data-zh="数据">Data</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="dynamodb"><span class="dg-text"><strong data-zh="DynamoDB">DynamoDB</strong><small data-zh="文章和草稿">Posts and drafts</small></span></div>
+            <div class="dg-node" data-icon="s3"><span class="dg-text"><strong data-zh="内容存储桶">Content bucket</strong><small data-zh="已发布的文章、图片和文件">Published posts, pictures and files</small></span></div>
+          </div>
+        </div>
+      </figure>
 
       <figure class="dg">
         <figcaption data-zh="助手如何写一篇文章">How an agent writes a post</figcaption>
@@ -153,21 +182,51 @@
     </article>
     <article id="health" class="dl-docs health-doc" hidden>
       <h2 data-zh="博客如何被检查">How the blog is checked</h2>
+      <p class="agent-note machine-link"><span data-zh="机器可读版本：">Machine-readable version: </span><a href="/docs/health.md">/docs/health.md</a></p>
       <p class="lead" data-zh="status.dliu.com 每 15 分钟像一位普通访客那样检查这个博客：不登录、不改动任何内容，只打开公开的页面和链接，再请博客检查它自己的数据库、存储和登录设置。">Every 15 minutes, status.dliu.com checks this blog the way an ordinary visitor would: it never signs in and never changes anything. It opens the public pages and links, then asks the blog to check its own database, storage and sign-in settings.</p>
 
       <div class="dg-stats">
         <div class="dg-stat" data-icon="check"><span class="dg-text"><strong>7</strong><small data-zh="项功能被检查">functions tested</small></span></div>
         <div class="dg-stat" data-icon="page"><span class="dg-text"><strong>10</strong><small data-zh="项检查：6 个页面和链接，4 项自检">checks: 6 pages and links, 4 self-checks</small></span></div>
         <div class="dg-stat" data-icon="clock"><span class="dg-text"><strong data-zh="15 分钟">15 min</strong><small data-zh="每隔多久检查一次">between runs</small></span></div>
-        <div class="dg-stat" data-icon="pin"><span class="dg-text"><strong>3</strong><small data-zh="个地点：爱尔兰、弗吉尼亚、东京">places: Ireland, Virginia, Tokyo</small></span></div>
-        <div class="dg-stat" data-icon="chart"><span class="dg-text"><strong>288</strong><small data-zh="次检查运行每天（96 次 × 3 个地点）">runs a day (96 × 3 places)</small></span></div>
+        <div class="dg-stat" data-icon="pin"><span class="dg-text"><strong>4</strong><small data-zh="个地点：爱尔兰、弗吉尼亚、东京，以及每小时一次的中国">places: Ireland, Virginia, Tokyo, and China every hour</small></span></div>
+        <div class="dg-stat" data-icon="chart"><span class="dg-text"><strong>312</strong><small data-zh="次检查运行每天（96 次 × 3 个地点，加中国 24 次）">runs a day (96 × 3 places, plus 24 from China)</small></span></div>
         <div class="dg-stat" data-icon="user"><span class="dg-text"><strong>0</strong><small data-zh="次登录：只以访客身份检查">sign-ins: guests only</small></span></div>
       </div>
+
+      <figure class="dg dg-tiers health-tiers">
+        <figcaption data-zh="谁检查什么">What is checked, and by whom</figcaption>
+        <div class="dg-tier dg-untrusted"><div class="dg-tier-label"><span class="dg-badge" data-zh="访客">Guest</span><strong data-zh="测试者">Testers</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="bot"><span class="dg-text"><strong>status.dliu.com</strong><small data-zh="爱尔兰、弗吉尼亚和东京每 15 分钟一次；中国每小时一次">Ireland, Virginia and Tokyo every 15 minutes; China every hour</small></span></div>
+          </div>
+        </div>
+        <div class="dg-link"><span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span><span data-zh="HTTPS，不登录">HTTPS, no sign-in</span></div>
+        <div class="dg-tier dg-edge"><div class="dg-tier-label"><span class="dg-badge" data-zh="CDN">CDN</span><strong data-zh="边缘">Edge</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="cloudfront"><span class="dg-text"><strong data-zh="CloudFront">CloudFront</strong><small data-zh="首页、文章列表和文档：6 项页面和链接检查中的 3 项">The home page, the post list and the docs: 3 of the 6 page and link checks</small></span></div>
+          </div>
+        </div>
+        <div class="dg-link"><span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span><span data-zh="/health、/api/me、心情和登录链接">/health, /api/me, reactions and the sign-in link</span></div>
+        <div class="dg-tier dg-app"><div class="dg-tier-label"><span class="dg-badge" data-zh="按需运行">On demand</span><strong data-zh="作者 API">Author API</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="lambda"><span class="dg-text"><strong data-zh="API Lambda">API Lambda</strong><small data-zh="回答 /health 的 4 项自检，以及另外 3 项检查；只在被调用时运行">Answers /health with its 4 self-checks, and the other 3 checks; runs only when called</small></span></div>
+          </div>
+        </div>
+        <div class="dg-link"><span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span><span data-zh="每样只快速读一次，结果缓存一分钟">One quick read each; the result is kept for a minute</span></div>
+        <div class="dg-tier dg-private"><div class="dg-tier-label"><span class="dg-badge" data-zh="存储">Storage</span><strong data-zh="/health 读取的内容">What /health reads</strong></div>
+          <div class="dg-tier-nodes">
+            <div class="dg-node" data-icon="dynamodb"><span class="dg-text"><strong data-zh="DynamoDB">DynamoDB</strong><small data-zh="文章数据库和心情数据库">The posts and reactions databases</small></span></div>
+            <div class="dg-node" data-icon="s3"><span class="dg-text"><strong data-zh="内容存储桶">Content bucket</strong><small data-zh="已发布文章的列表">The list of published posts</small></span></div>
+            <div class="dg-node" data-icon="ssm"><span class="dg-text"><strong data-zh="Parameter Store">Parameter Store</strong><small data-zh="登录设置">The sign-in settings</small></span></div>
+          </div>
+        </div>
+      </figure>
 
       <figure class="dg health-diagram">
         <figcaption data-zh="一次检查的过程">How a check runs</figcaption>
         <div class="dg-flow" role="list">
-          <div class="dg-step" role="listitem" data-icon="bot"><span class="dg-text"><strong>status.dliu.com</strong><small data-zh="以访客身份，从 3 个地点">As a guest, from 3 places</small></span></div>
+          <div class="dg-step" role="listitem" data-icon="bot"><span class="dg-text"><strong>status.dliu.com</strong><small data-zh="以访客身份，从 4 个地点">As a guest, from 4 places</small></span></div>
           <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>
           <div class="dg-step" role="listitem" data-icon="page"><span class="dg-text"><strong data-zh="6 个页面和链接">6 pages and links</strong><small data-zh="首页、文章列表、心情、/api/me、登录链接、文档">Home page, post list, reactions, /api/me, sign-in link, docs</small></span></div>
           <span class="dg-arrow"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12h15M13 6l6 6-6 6"/></svg></span>

@@ -45,6 +45,33 @@ test('the API tab lists the same nine endpoints and permissions as the guide, wi
   expect(fs.readFileSync(path.join(WEB, 'app.js'), 'utf8')).toContain("href: '/docs#api', text: 'API'");
 });
 
+// The API and Health tabs draw their components like the Architecture tab: tiers of cards joined by labelled
+// arrows, with the same icon (and so colour) for the same service.
+test('the API and Health tabs have tier diagrams in the Architecture style, with matching icons', () => {
+  const html = fs.readFileSync(path.join(WEB, 'docs.html'), 'utf8');
+  const docsJs = fs.readFileSync(path.join(WEB, 'docs.js'), 'utf8');
+  const arch = docsJs.slice(docsJs.indexOf("title: t('组件', 'Components')"), docsJs.indexOf("add('h2', t('阅读博客'"));
+  const archIcons = new Map([...arch.matchAll(/\{ icon: '(\w+)', title: t\('[^']+', '([^']+)'\)/g)].map(([, icon, title]) => [title, icon]));
+  expect(archIcons.size).toBeGreaterThanOrEqual(10);
+  expect(docsJs).toContain("'.dg-step[data-icon], .dg-stat[data-icon], .dg-node[data-icon]'");
+  for (const id of ['api', 'health']) {
+    const start = html.indexOf(`<article id="${id}"`);
+    const tab = html.slice(start, html.indexOf('</article>', start));
+    const figure = tab.match(/<figure class="dg dg-tiers [\w-]+">([\s\S]*?)<\/figure>/)[1];
+    expect([id, [...figure.matchAll(/<div class="dg-tier dg-(\w+)">/g)].map(([, tone]) => tone)]).toEqual([id, ['untrusted', 'edge', 'app', 'private']]);
+    expect(figure.match(/<div class="dg-tier-label"><span class="dg-badge"[^>]*>[^<]+<\/span><strong[^>]*>[^<]+<\/strong><\/div>/g)).toHaveLength(4);
+    expect(figure.match(/<div class="dg-link"><span class="dg-arrow"><svg [^>]+><path [^>]+\/><\/svg><\/span><span data-zh="[^"]+">[^<]+<\/span><\/div>/g)).toHaveLength(3);
+    const nodes = [...figure.matchAll(/<div class="dg-node" data-icon="(\w+)"><span class="dg-text"><strong[^>]*>([^<]+)<\/strong><small data-zh="[^"]+">[^<]+<\/small><\/span><\/div>/g)];
+    expect(nodes.length).toBe(figure.match(/class="dg-node"/g).length);
+    expect(nodes.length).toBeGreaterThanOrEqual(5);
+    const shared = nodes.filter(([, , title]) => archIcons.has(title));
+    expect(shared.length).toBeGreaterThanOrEqual(4);
+    for (const [, icon, title] of shared) expect([id, title, icon]).toEqual([id, title, archIcons.get(title)]);
+    expect(tab.match(/class="dg-stat" data-icon="\w+"/g).length).toBeGreaterThanOrEqual(4);
+  }
+  expect(html).toMatch(/<article id="api"[^>]*>\s*<h2 [^>]*>[^<]+<\/h2>\s*<p class="agent-note machine-link"><span data-zh="机器可读版本：">Machine-readable version: <\/span><a href="\/docs\/api\.md">\/docs\/api\.md<\/a><\/p>/);
+});
+
 test('the first tab is called Architecture, with its #architecture anchor kept', () => {
   const html = fs.readFileSync(path.join(WEB, 'docs.html'), 'utf8');
   expect(html).toContain('<a href="#architecture" data-tab="architecture" data-zh="架构">Architecture</a>');

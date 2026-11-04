@@ -503,7 +503,7 @@ function security(root) {
 // The API and Health tabs are static HTML in docs.html (data-zh holds the Chinese, so tests can check them against
 // /docs/api.md, /docs/health.md and the code); this only adds the diagram icons, once.
 function staticTab(root) {
-  for (const step of root.querySelectorAll('.dg-step[data-icon], .dg-stat[data-icon]')) {
+  for (const step of root.querySelectorAll('.dg-step[data-icon], .dg-stat[data-icon], .dg-node[data-icon]')) {
     if (!step.querySelector(':scope > .dg-icon')) step.prepend(icon(step.dataset.icon));
   }
 }

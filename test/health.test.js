@@ -123,7 +123,9 @@ describe('/docs#health and /docs/health.md', () => {
     expect(read('web/docs.js')).toContain("api: staticTab, health: staticTab");
     expect(read('web/diagram.js')).toContain("el('span', 'dg-icon')");
     expect(page).toContain('<a href="/docs/health.md" data-zh="面向机器的技术版本（Markdown）">Technical version for machines (Markdown)</a>');
-    expect(page.match(/<a /g)).toHaveLength(1);
+    expect(page.match(/<a /g)).toHaveLength(2);
+    // Also at the beginning, right under the heading.
+    expect(page).toMatch(/^<article id="health"[^>]*>\s*<h2 [^>]*>[^<]+<\/h2>\s*<p class="agent-note machine-link"><span data-zh="机器可读版本：">Machine-readable version: <\/span><a href="\/docs\/health\.md">\/docs\/health\.md<\/a><\/p>/);
     expect(docsHtml).toContain('<link rel="alternate" type="text/markdown" href="/docs/health.md"');
     expect(markdown).toMatch(/^# How to test blog\.dliu\.com\n/);
     for (const title of ['Functions', 'Guest checks', 'Health endpoint', 'Not tested', 'Rules']) expect(section(title)).not.toBe('');
