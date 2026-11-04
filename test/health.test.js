@@ -123,7 +123,9 @@ describe('/docs#health and /docs/health.md', () => {
     expect(read('web/docs.js')).toContain("api: staticTab, health: staticTab");
     expect(read('web/diagram.js')).toContain("el('span', 'dg-icon')");
     expect(page).toContain('<a href="/docs/health.md" data-zh="面向机器的技术版本（Markdown）">Technical version for machines (Markdown)</a>');
-    expect(page.match(/<a /g)).toHaveLength(2);
+    expect(page.match(/<a /g)).toHaveLength(3);
+    // Next to it, the blog's own page on status.dliu.com.
+    expect(page).toContain('/docs/health.md</a></p>\n      <p class="agent-note status-link"><span data-zh="实时状态：">Live status: </span><a href="https://status.dliu.com/site/blog">status.dliu.com/site/blog</a></p>');
     // Also at the beginning, right under the heading.
     expect(page).toMatch(/^<article id="health"[^>]*>\s*<h2 [^>]*>[^<]+<\/h2>\s*<p class="agent-note machine-link"><span data-zh="机器可读版本：">Machine-readable version: <\/span><a href="\/docs\/health\.md">\/docs\/health\.md<\/a><\/p>/);
     expect(docsHtml).toContain('<link rel="alternate" type="text/markdown" href="/docs/health.md"');
@@ -146,7 +148,7 @@ describe('/docs#health and /docs/health.md', () => {
   });
 
   test('no exact technical details: no code, folded blocks, URLs, status codes, headers or JSON', () => {
-    expect(page).not.toMatch(/<code|<pre|<details|https?:\/\/|\b(200|302|401|503)\b|application\/|max-age|Cache-Control|Content-Type|\{"/);
+    expect(page.replace('https://status.dliu.com/site/blog"', '"')).not.toMatch(/<code|<pre|<details|https?:\/\/|\b(200|302|401|503)\b|application\/|max-age|Cache-Control|Content-Type|\{"/);
   });
 
   test('the function keys and names agree in the tab, the Markdown file and the endpoint, and so do the counts', () => {
