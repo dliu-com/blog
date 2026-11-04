@@ -372,6 +372,20 @@ export class BlogStack extends Stack {
       responseHeadersPolicy: headers,
     };
 
+    // /sitemap.xml: built by the Lambda from the published posts; one copy per edge for an hour.
+    const sitemapCache = new cloudfront.CachePolicy(this, 'SitemapCache', {
+      comment: 'blog.dliu.com /sitemap.xml, one copy for everyone',
+      minTtl: Duration.seconds(0),
+      defaultTtl: Duration.hours(1),
+      maxTtl: Duration.hours(1),
+      headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+      cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+      queryStringBehavior: cloudfront.CacheQueryStringBehavior.none(),
+      enableAcceptEncodingGzip: true,
+      enableAcceptEncodingBrotli: true,
+    });
+    const sitemapBehavior: cloudfront.BehaviorOptions = { ...healthBehavior, cachePolicy: sitemapCache, compress: true };
+
     const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       comment: 'blog.dliu.com',
       defaultBehavior: {
@@ -391,6 +405,7 @@ export class BlogStack extends Stack {
         'media/*': contentBehavior,
         '20????????': postPageBehavior,
         'health': healthBehavior,
+        'sitemap.xml': sitemapBehavior,
       },
       domainNames: [domainName],
       certificate,

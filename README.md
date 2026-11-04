@@ -170,6 +170,7 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 - Reactions (`GET`/`POST /api/reactions/<postId>`) are never cached. The page loads them after the post, so readers call the Lambda once per post view; if it fails, the buttons stay hidden.
 - Signed-in authors also see who reacted: `GET /api/posts/<postId>/reactions` (website session only, never the Microsoft API) lists each visitor ID, reaction and time, and the page links each ID to `https://traffic.dliu.com/visitor?visitor=<id>` in the private traffic monitor. Guests and readers only get counts and their own reaction.
 - Publishing, editing or unpublishing a post rewrites `content/posts/<postId>.json`. It also rebuilds `content/index.json` from DynamoDB.
+- `/sitemap.xml` is not a file: its own behaviour (cache policy keyed on nothing, nothing forwarded) asks the Lambda, which lists `/`, `/docs` and every published post `/<postId>` from DynamoDB (`lambda/api/sitemap.js`), with the last update date as `lastmod` (the newest post's for `/`). CloudFront keeps it for an hour, so publishing or unpublishing reaches the sitemap within an hour, with nothing to regenerate. It leaves out drafts, `/admin`, `/auth/*`, `/api/*`, `/health`, `/content/*`, `/media/*`, the machine guides `/docs/*.md`, the `/?s=` and `/?m=` views (their canonical is `/`) and every redirecting address. `test/sitemap.test.js` covers it.
 
 ## Routes and old links
 
@@ -182,6 +183,8 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 | `/docs#api`, `/docs/api.md` | The writing API (the API tab for people, Markdown for agents); `/docs/api` → 301 `/docs#api` |
 | `/docs#health`, `/docs/health.md` | How status.dliu.com tests the site (the Health tab for people, Markdown for machines); `/docs/health` → 301 `/docs#health` |
 | `/health` | Health check for status.dliu.com (`application/health+json`). `/health/` redirects to it. |
+| `/sitemap.xml` | Sitemap for search engines, built by the Lambda from the published posts (see below) |
+| `/robots.txt` | Allows everything and points to the sitemap (`web/robots.txt`) |
 | `/posts/<postId>` | `/<postId>` (301) |
 | `/2025/04/` | `/?m=202504` (301) |
 | `/<old-wordpress-slug>/`, `/page/2/` | `/` (301) |

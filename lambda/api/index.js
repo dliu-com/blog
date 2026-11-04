@@ -9,6 +9,7 @@ const ROUTES = require('./routes.json');
 const reactions = require('./reactions');
 const { createTemplateLoader, renderPostPage } = require('./page');
 const { checkHealth, createHealthChecks, healthResponse } = require('./health');
+const { buildSitemap, sitemapResponse } = require('./sitemap');
 const {
   BadRequest, FILE_ID, MAX_FILES, MAX_POSTS_PER_DAY, POST_ID, buildIndex, compareSummaries, derive, newFileId, nextPostNumber, postIdFor, postIdPrefix,
   parsePostUpdate, parseUpload, toApiPost, toPublicPost, toSummary,
@@ -358,6 +359,11 @@ function createHandler(deps = {}) {
       if (path === '/health') {
         if (method !== 'GET' && method !== 'HEAD') return json(405, { error: 'Method not allowed' });
         return healthResponse(await checkHealth(healthChecks), method);
+      }
+      // Search engines' list of public pages; like /health, it reads nothing from the request.
+      if (path === '/sitemap.xml') {
+        if (method !== 'GET' && method !== 'HEAD') return json(405, { error: 'Method not allowed' });
+        return sitemapResponse(buildSitemap(await store.listPosts(), siteUrl), method);
       }
       if (path === '/index.html') return await postPage(event, method);
       if (path.startsWith('/auth/')) {

@@ -77,7 +77,7 @@ test('api reads exactly its own client ID and secret plus the shared tenant ID',
 test('CloudFront routes the API, published content and media', () => {
   const [distribution] = Object.values(template.findResources('AWS::CloudFront::Distribution')) as any[];
   const config = distribution.Properties.DistributionConfig;
-  expect(config.CacheBehaviors.map((b: any) => b.PathPattern)).toEqual(['api/*', 'auth/*', 'content/*', 'media/*', '20????????', 'health']);
+  expect(config.CacheBehaviors.map((b: any) => b.PathPattern)).toEqual(['api/*', 'auth/*', 'content/*', 'media/*', '20????????', 'health', 'sitemap.xml']);
   expect(config.CacheBehaviors.find((b: any) => b.PathPattern === 'content/*').AllowedMethods).toEqual(['GET', 'HEAD']);
   expect(config.CustomErrorResponses).toBeUndefined();
   expect(config.Logging).toEqual({ IncludeCookies: true });
@@ -313,6 +313,26 @@ test('/health: its own CloudFront behaviour, cached 60 s, keyed on nothing and f
   const policies = template.findResources('AWS::CloudFront::CachePolicy');
   const policy = policies[health.CachePolicyId.Ref].Properties.CachePolicyConfig;
   expect(policy).toMatchObject({ MinTTL: 0, DefaultTTL: 60, MaxTTL: 60 });
+  expect(policy.ParametersInCacheKeyAndForwardedToOrigin).toMatchObject({
+    HeadersConfig: { HeaderBehavior: 'none' },
+    CookiesConfig: { CookieBehavior: 'none' },
+    QueryStringsConfig: { QueryStringBehavior: 'none' },
+  });
+});
+
+test('/sitemap.xml: served by the Lambda like /health, cached an hour, keyed on nothing and forwarding nothing', () => {
+  const [distribution] = Object.values(template.findResources('AWS::CloudFront::Distribution')) as any[];
+  const config = distribution.Properties.DistributionConfig;
+  const sitemap = config.CacheBehaviors.find((b: any) => b.PathPattern === 'sitemap.xml');
+  const health = config.CacheBehaviors.find((b: any) => b.PathPattern === 'health');
+  expect(sitemap.TargetOriginId).toBe(health.TargetOriginId);
+  expect(sitemap.AllowedMethods).toEqual(['GET', 'HEAD']);
+  expect(sitemap.OriginRequestPolicyId).toBeUndefined();
+  expect(sitemap.FunctionAssociations).toBeUndefined();
+  expect(sitemap.ResponseHeadersPolicyId).toEqual(health.ResponseHeadersPolicyId);
+  expect(sitemap.Compress).toBe(true);
+  const policy = template.findResources('AWS::CloudFront::CachePolicy')[sitemap.CachePolicyId.Ref].Properties.CachePolicyConfig;
+  expect(policy).toMatchObject({ MinTTL: 0, DefaultTTL: 3600, MaxTTL: 3600 });
   expect(policy.ParametersInCacheKeyAndForwardedToOrigin).toMatchObject({
     HeadersConfig: { HeaderBehavior: 'none' },
     CookiesConfig: { CookieBehavior: 'none' },
