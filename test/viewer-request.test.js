@@ -38,7 +38,7 @@ test('/docs/api redirects to the API tab, /docs#api; /docs/api.md is served as a
   expect(run('/docs/api.md').uri).toBe('/docs/api.md');
 });
 
-test('/docs/health redirects to the Testing tab, /docs#health; /docs/health.md is a file; /health is never redirected home', () => {
+test('/docs/health redirects to the Health tab, /docs#health; /docs/health.md is a file; /health is never redirected home', () => {
   for (const uri of ['/docs/health', '/docs/health/']) {
     expect(run(uri)).toMatchObject({ statusCode: 301, headers: { location: { value: '/docs#health' } } });
   }

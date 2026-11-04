@@ -8,7 +8,7 @@ const TITLES = {
   cost: () => t('运行成本', 'Cost'),
   security: () => t('安全', 'Security'),
   api: () => 'API',
-  health: () => t('测试', 'Testing'),
+  health: () => t('健康', 'Health'),
 };
 const num = (text) => ({ text, className: 'num' });
 const mono = (text) => ({ text, className: 'mono' });
@@ -500,7 +500,7 @@ function security(root) {
   source(root, t('源码：dliu-com/blog（lambda/api/auth.js、lambda/api/index.js、lambda/api/api-access.js、lambda/api/routes.json、lambda/api/reactions.js、lambda/api/s3.js、functions/viewer-request.js、web/markdown.js、lib/blog-stack.ts、scripts/pentest.mjs）。', 'Source: dliu-com/blog (lambda/api/auth.js, lambda/api/index.js, lambda/api/api-access.js, lambda/api/routes.json, lambda/api/reactions.js, lambda/api/s3.js, functions/viewer-request.js, web/markdown.js, lib/blog-stack.ts, scripts/pentest.mjs).'));
 }
 
-// The API and Testing tabs are static HTML in docs.html (data-zh holds the Chinese, so tests can check them against
+// The API and Health tabs are static HTML in docs.html (data-zh holds the Chinese, so tests can check them against
 // /docs/api.md, /docs/health.md and the code); this only adds the diagram icons, once.
 function staticTab(root) {
   for (const step of root.querySelectorAll('.dg-step[data-icon], .dg-stat[data-icon]')) {

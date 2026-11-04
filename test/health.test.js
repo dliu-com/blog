@@ -1,6 +1,6 @@
 'use strict';
 
-// The dliu.com health contract (status.dliu.com): GET /health, the Testing tab /docs#health (people) and
+// The dliu.com health contract (status.dliu.com): GET /health, the Health tab /docs#health (people) and
 // /docs/health.md (machines).
 const fs = require('node:fs');
 const path = require('node:path');
@@ -10,7 +10,7 @@ const health = require('../lambda/api/health');
 const ROOT = path.join(__dirname, '..');
 const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 const docsHtml = read('web/docs.html');
-// The Testing tab: <article id="health"> in docs.html.
+// The Health tab: <article id="health"> in docs.html.
 const page = docsHtml.slice(docsHtml.indexOf('<article id="health"'), docsHtml.indexOf('</article>', docsHtml.indexOf('<article id="health"')) + '</article>'.length);
 const markdown = read('web/docs/health.md');
 const KEYS = health.FUNCTIONS.map((f) => f.key);
@@ -112,9 +112,10 @@ describe('GET /health', () => {
 });
 
 describe('/docs#health and /docs/health.md', () => {
-  test('both exist: a Testing tab on /docs, which links the Markdown file as the technical version for machines', () => {
+  test('both exist: a Health tab on /docs, which links the Markdown file as the technical version for machines', () => {
     expect(page).toMatch(/^<article id="health" class="dl-docs health-doc" hidden>/);
-    expect(docsHtml).toContain('<a href="#health" data-tab="health" data-zh="测试">Testing</a>');
+    expect(docsHtml).toContain('<a href="#health" data-tab="health" data-zh="健康">Health</a>');
+    expect(read('web/docs.js')).toContain("health: () => t('健康', 'Health'),");
     expect(read('web/docs.js')).toContain("const TABS = ['architecture', 'cost', 'security', 'api', 'health'];");
     expect(fs.existsSync(path.join(ROOT, 'web/docs-health.html'))).toBe(false);
     // docs.js redraws every tab on a language change; the icons (span.dg-icon) are added only once.

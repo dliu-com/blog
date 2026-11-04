@@ -65,7 +65,7 @@ Every dliu.com site shares one light look from https://files.dliu.com/dliu.com/R
 
 ## Languages
 
-The site is in Chinese and English. It follows the browser's language (any `zh-*` is Chinese, everything else English) until the reader picks one with the 中文 / English switch at the end of the header (the shared `dl-language` markup; 文/A on phones); that choice is saved in the browser (`localStorage`, key `blog-language`). `web/i18n.js` holds the language, the `t(中文, English)` helper and the Chinese text for API errors; static text in the HTML pages carries its Chinese in `data-zh` attributes. Posts are shown as written, and the machine-readable guides `/docs/api.md` and `/docs/health.md` stay in English; the API and Testing tabs on `/docs` are in both languages.
+The site is in Chinese and English. It follows the browser's language (any `zh-*` is Chinese, everything else English) until the reader picks one with the 中文 / English switch at the end of the header (the shared `dl-language` markup; 文/A on phones); that choice is saved in the browser (`localStorage`, key `blog-language`). `web/i18n.js` holds the language, the `t(中文, English)` helper and the Chinese text for API errors; static text in the HTML pages carries its Chinese in `data-zh` attributes. Posts are shown as written, and the machine-readable guides `/docs/api.md` and `/docs/health.md` stay in English; the API and Health tabs on `/docs` are in both languages.
 
 ## API for AI agents and scripts
 
@@ -89,12 +89,12 @@ Every route also needs the Microsoft-assigned user role **dliu API user** (`api.
 web/            frontend (vanilla JS, no build step): index.html, app.js, i18n.js (Chinese/English), markdown.js, style.css,
                 docs.html, docs.js, diagram.js (the /docs page; shared dl.css + dl-docs.css),
                 docs-nav.js, docs/api.md (API guide for agents; the API URL is filled in at deploy; for people it is docs.html's
-                API tab), docs/health.md (how status.dliu.com tests the site; for people it is docs.html's Testing tab)
+                API tab), docs/health.md (how status.dliu.com tests the site; for people it is docs.html's Health tab)
 lambda/invalidate/ clears deleted or changed media from CloudFront (S3 event -> SQS -> this function)
 lambda/api/     authoring API: routes (index.js), managed API routes and checks (routes.json, api-access.js), posts,
                 S3 signing, DynamoDB store, Entra auth, config, /health (health.js)
 functions/      CloudFront viewer-request function (routing + old-link redirects)
-lib/, bin/      AWS CDK stack (BlogSite)
+lib/, bin/      AWS CDK stack (BlogSite); lib/versioned-web.ts adds ?v=<content hash> to script and style URLs
 scripts/        dev server with in-memory store, set-secrets.sh, api-client.js (managed API client)
 test/           Jest tests (API, S3 signing, routing, markdown sanitising, languages, shared UI, stack)
 archive/        the previous WordPress Docker setup, kept for reference only
@@ -158,7 +158,7 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 
 - CloudFront uses every edge location (price class All), since most readers are in Europe and Asia, and serves HTTP/3.
 - The HTML shells (`*.html`) and `content/*.json` are served with `no-cache`, so CloudFront and browsers revalidate them. A published edit appears immediately.
-- The other site files (scripts, styles, images, `docs/api.md`) are uploaded with `public, max-age=300, s-maxage=86400, stale-while-revalidate=86400`. CloudFront keeps them for a day, and every deploy invalidates `/*`. Browsers reuse them for five minutes, so just after a deploy a returning reader may briefly run the previous scripts. `make deploy` uploads them first (`SiteContent`), then the HTML shells (`SitePages`); each upload syncs and prunes only its own files.
+- The other site files (scripts, styles, images, `docs/api.md`) are uploaded with `public, max-age=300, s-maxage=86400, stale-while-revalidate=86400`. CloudFront keeps them for a day, and every deploy invalidates `/*`. Browsers reuse them for five minutes, so the deployed pages load each local script and stylesheet as `/<file>?v=<content hash>`, and modules import each other the same way (`lib/versioned-web.ts` writes a versioned copy of `web/` at synth; the source keeps plain URLs, and the dev server ignores the query). A new page therefore always runs its own scripts, never the previous deploy's. `make deploy` uploads them first (`SiteContent`), then the HTML shells (`SitePages`); each upload syncs and prunes only its own files.
 - Files under `/media/` are cached for a day. A replaced file gets a new ID, so its URL changes too.
 - Automatic CloudFront clearing (decided per bucket; the 1,000 free invalidation paths a month are shared by every dliu.com site):
   - **Content bucket `media/`: on.** Deleting a file or a post, or changing `media/` in the S3 console, sends an S3 event (EventBridge rule `MediaChanged`, `Object Deleted` and `Object Created` except `CopyObject`) to the `MediaChanges` SQS queue. `MediaInvalidator` takes up to a minute of events at a time and clears `/media/<postId>/<fileId>/*` for one file, `/media/<postId>/*` for several files of a post, or `/media/*` for more than ten posts or an unexpected key. That is usually a few paths a month. Failures are retried until the queue drops them after a day, when CloudFront's copy has expired anyway. Browsers that already loaded a deleted file may keep it for up to a day.
@@ -180,7 +180,7 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 | `/admin` | All posts and drafts (signed in) |
 | `/docs` | Architecture, cost, security and testing (tabs) |
 | `/docs#api`, `/docs/api.md` | The writing API (the API tab for people, Markdown for agents); `/docs/api` → 301 `/docs#api` |
-| `/docs#health`, `/docs/health.md` | How status.dliu.com tests the site (the Testing tab for people, Markdown for machines); `/docs/health` → 301 `/docs#health` |
+| `/docs#health`, `/docs/health.md` | How status.dliu.com tests the site (the Health tab for people, Markdown for machines); `/docs/health` → 301 `/docs#health` |
 | `/health` | Health check for status.dliu.com (`application/health+json`). `/health/` redirects to it. |
 | `/posts/<postId>` | `/<postId>` (301) |
 | `/2025/04/` | `/?m=202504` (301) |
@@ -207,7 +207,7 @@ The DynamoDB tables and the content bucket are **retained** when the stack is de
 
 The site follows the dliu.com health contract (`status/HEALTH.md`): status.dliu.com checks it every 15 minutes as an anonymous guest.
 
-- The Testing tab, `/docs#health` (static HTML in `docs.html`; the old `/docs/health` answers 301 to it), explains the checks for people with numbers, flows, a table per function, a chart and what isn't tested, and no exact technical details (only names such as `/health` or `/api/me`). `/docs/health.md` is the full technical version for machines (functions, guest checks table, `/health`, not tested, rules), uploaded by its own `HealthDoc` deployment as `text/markdown; charset=utf-8`.
+- The Health tab, `/docs#health` (static HTML in `docs.html`; the old `/docs/health` answers 301 to it), explains the checks for people with numbers, flows, a table per function, a chart and what isn't tested, and no exact technical details (only names such as `/health` or `/api/me`). `/docs/health.md` is the full technical version for machines (functions, guest checks table, `/health`, not tested, rules), uploaded by its own `HealthDoc` deployment as `text/markdown; charset=utf-8`.
 - `GET /health` reports `posts` (DynamoDB `GetItem` of a fixed key on the posts table), `reactions` (`GetItem` on the reactions table), `storage` (S3 `HeadObject` of `content/index.json`; the only extra IAM grant is `s3:GetObject` on exactly that object) and `signin` (the SSM settings read sign-in already does, cached 5 minutes; no call to Microsoft). Checks run in parallel with a 2 s timeout each; over 1 s is `warn` (`slow`), a failure is `fail` (`timeout` or `read failed`). It answers `200` for `pass`/`warn` and `503` for `fail`, and names no tables, buckets or functions.
 - The `health` CloudFront behaviour sends it to the API Lambda with a cache policy keyed on nothing (60 s, the Lambda's `max-age=60`) and no origin request policy, so no cookies, `Authorization` header or query string reach the Lambda; the handler reads none of them either. No viewer function runs on it.
 - `test/health.test.js` fails if the page, the Markdown file or the endpoint disappears, if `/health` reads the request, if the diagram is lost or details are unfolded, or if the function keys drift between the page, the Markdown file and the endpoint. `test/stack.test.ts` checks the behaviour, the cache policy, the grant and the Markdown content type.

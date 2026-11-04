@@ -1,6 +1,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Construct } from 'constructs';
+import { stageVersionedWeb } from './versioned-web';
 import {
   aws_apigatewayv2 as apigateway,
   aws_apigatewayv2_authorizers as authorizers,
@@ -418,7 +419,9 @@ export class BlogStack extends Stack {
     // Two uploads of web/, each syncing (and pruning) only its own files, and each invalidating /*.
     // Scripts, styles, images and docs/api.md: CloudFront keeps them a day (a deploy invalidates them),
     // browsers five minutes.
-    const webAsset = s3deploy.Source.asset(path.join(ROOT, 'web'), { exclude: [API_DOC] });
+    // Pages load their scripts and styles as /<file>?v=<content hash> (see versioned-web.ts), so a new page
+    // never runs a script still in the browser's cache from the previous deploy.
+    const webAsset = s3deploy.Source.asset(stageVersionedWeb(path.join(ROOT, 'web')), { exclude: [API_DOC] });
     // docs/health.md has its own upload so it is served as text/markdown; charset=utf-8.
     const assets = new s3deploy.BucketDeployment(this, 'SiteContent', {
       sources: [

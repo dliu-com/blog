@@ -4,7 +4,7 @@
 // - For /<postId> the ID goes in x-blog-post: the post-page behaviour asks the API Lambda for index.html
 //   with the post's link-preview tags (falling back to the plain file), and caches per ID.
 //   /<postId>/ redirects to /<postId>. A viewer can't send its own x-blog-post.
-// - The API guide and how status.dliu.com tests the site are the API and Testing tabs, /docs#api and /docs#health;
+// - The API guide and how status.dliu.com tests the site are the API and Health tabs, /docs#api and /docs#health;
 //   machines read /docs/api.md and /docs/health.md. The old /docs/api and /docs/health redirect to the tabs.
 // - /health has its own behaviour (no function); /health/ redirects to it.
 // - On /api/* and /auth/*, the viewer's IP goes in x-blog-viewer (replacing any sent) for the reactions
